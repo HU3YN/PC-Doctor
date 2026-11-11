@@ -1,0 +1,6 @@
+* text=auto eol=lf
+# Windows launchers must have CRLF line endings or cmd.exe can misparse them.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.png binary
+*.zip binary

@@ -1,0 +1,124 @@
+# Dumps facts straight from a real Windows machine so the collector and the
+# rules engine can be checked against Windows itself instead of from memory:
+# event definitions, storage class properties, and PresentMon's real CLI/CSV.
+# Run it by hand from the Actions tab (or it runs when this file changes).
+name: windows-facts
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/windows-facts.yml
+
+permissions:
+  contents: read
+
+jobs:
+  facts:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Windows and PowerShell versions
+        shell: powershell
+        run: |
+          $PSVersionTable | Out-String
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber | Format-List
+
+      - name: Event definitions for the providers the collector reads
+        shell: powershell
+        run: |
+          $providers = @(
+            'Microsoft-Windows-WHEA-Logger',
+            'Microsoft-Windows-Kernel-Power',
+            'Microsoft-Windows-WER-SystemErrorReporting',
+            'Microsoft-Windows-MemoryDiagnostics-Results',
+            'Microsoft-Windows-Kernel-Processor-Power',
+            'disk', 'Ntfs', 'Microsoft-Windows-Ntfs', 'storahci', 'stornvme', 'volmgr',
+            'Display', 'EventLog', 'Microsoft-Windows-Kernel-Boot'
+          )
+          $wanted = @{
+            'Microsoft-Windows-Kernel-Power' = @(41, 86, 109, 125, 131)
+            'Microsoft-Windows-Kernel-Processor-Power' = @(34, 35, 36, 37)
+            'disk' = @(7, 11, 15, 51, 52, 153, 154, 157)
+            'Ntfs' = @(55, 98, 137, 140)
+            'Microsoft-Windows-Ntfs' = @(55, 98, 130, 137, 140)
+            'storahci' = @(129, 117)
+            'stornvme' = @(11, 129)
+            'volmgr' = @(46, 161)
+            'Display' = @(4101)
+            'EventLog' = @(6005, 6006, 6008, 6009, 6013)
+            'Microsoft-Windows-Kernel-Boot' = @(27, 29)
+          }
+          foreach ($p in $providers) {
+            Write-Output "=================== $p"
+            try {
+              $meta = Get-WinEvent -ListProvider $p -ErrorAction Stop
+              Write-Output ("LogLinks: " + (($meta.LogLinks | ForEach-Object { $_.LogName }) -join ', '))
+              $events = $meta.Events
+              if ($wanted.ContainsKey($p)) { $events = $events | Where-Object { $wanted[$p] -contains $_.Id } }
+              foreach ($e in $events) {
+                $desc = ($e.Description -replace '\s+', ' ')
+                if ($desc.Length -gt 400) { $desc = $desc.Substring(0, 400) }
+                Write-Output ("ID={0} Level={1} Log={2} :: {3}" -f $e.Id, $e.Level.DisplayName, $e.LogLink.LogName, $desc)
+                if ($p -match 'Kernel-Power|WER-System|MemoryDiag|WHEA' -and $e.Template) {
+                  $names = [regex]::Matches($e.Template, 'name="([^"]+)"') | ForEach-Object { $_.Groups[1].Value }
+                  Write-Output ("      fields: " + ($names -join ', '))
+                }
+              }
+            } catch { Write-Output "PROVIDER NOT AVAILABLE: $($_.Exception.Message)" }
+          }
+
+      - name: Storage and hardware CIM class definitions
+        shell: powershell
+        run: |
+          foreach ($c in 'MSFT_StorageReliabilityCounter', 'MSFT_PhysicalDisk', 'MSFT_Volume') {
+            Write-Output "=================== $c"
+            $cls = Get-CimClass -Namespace root/Microsoft/Windows/Storage -ClassName $c
+            foreach ($prop in $cls.CimClassProperties) {
+              $line = "{0} ({1})" -f $prop.Name, $prop.CimType
+              $vm = $prop.Qualifiers['ValueMap']; $vals = $prop.Qualifiers['Values']
+              if ($vm -and $vals -and $prop.Name -in 'HealthStatus', 'MediaType', 'BusType', 'OperationalStatus', 'DriveType') {
+                $pairs = for ($i = 0; $i -lt $vm.Value.Count; $i++) { "{0}={1}" -f $vm.Value[$i], $vals.Value[$i] }
+                $line += " :: " + ($pairs -join '; ')
+              }
+              Write-Output $line
+            }
+          }
+          Write-Output "=================== live sample (runner VM)"
+          Get-PhysicalDisk | Select-Object FriendlyName, MediaType, BusType, HealthStatus, OperationalStatus, Size, FirmwareVersion | Format-List
+          Get-PhysicalDisk | Get-StorageReliabilityCounter | Format-List *
+          Get-Volume | Select-Object DriveLetter, FileSystem, DriveType, HealthStatus, Size, SizeRemaining | Format-Table
+          foreach ($c in 'Win32_Processor', 'Win32_VideoController', 'Win32_PhysicalMemory', 'Win32_BaseBoard', 'Win32_BIOS', 'Win32_ComputerSystem', 'Win32_OperatingSystem', 'Win32_Battery') {
+            Write-Output "=================== $c properties"
+            (Get-CimClass -ClassName $c).CimClassProperties.Name -join ', '
+          }
+          Write-Output "=================== perf counters"
+          foreach ($set in 'Processor Information', 'GPU Engine', 'GPU Adapter Memory', 'Memory', 'Thermal Zone Information') {
+            try { Write-Output ("{0}: {1}" -f $set, ((Get-Counter -ListSet $set -ErrorAction Stop).Counter -join ' | ')) }
+            catch { Write-Output "$set : NOT AVAILABLE" }
+          }
+          powercfg /getactivescheme
+
+      - name: PresentMon real CLI and CSV header
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/GameTechDev/PresentMon/releases/latest' -Headers @{ Authorization = "Bearer $env:GH_TOKEN" }
+          Write-Output ("Latest release: {0} published {1}" -f $rel.tag_name, $rel.published_at)
+          $rel.assets | ForEach-Object { Write-Output ("asset: {0}  {1} bytes  {2}" -f $_.name, $_.size, $_.browser_download_url) }
+          $asset = $rel.assets | Where-Object { $_.name -match '^PresentMon-.*-x64\.exe$' } | Select-Object -First 1
+          if (-not $asset) { Write-Output 'No standalone x64 console exe asset found'; exit 0 }
+          $exe = Join-Path $env:RUNNER_TEMP $asset.name
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $exe
+          Write-Output "=================== --help"
+          & $exe --help 2>&1 | Out-String
+          Write-Output "=================== 8 second capture with the flags the collector uses"
+          $csv = Join-Path $env:RUNNER_TEMP 'pm.csv'
+          & $exe --output_file $csv --timed 8 --terminate_after_timed --no_console_stats --stop_existing_session --session_name PCDoctorProbe 2>&1 | Out-String
+          Write-Output "exit code: $LASTEXITCODE"
+          if (Test-Path $csv) { Write-Output "CSV header and first rows:"; Get-Content $csv -TotalCount 4 } else { Write-Output 'no CSV written (no presenting process on a headless runner is expected)' }
+          Write-Output "=================== same capture with --v1_metrics"
+          $csv1 = Join-Path $env:RUNNER_TEMP 'pm_v1.csv'
+          & $exe --output_file $csv1 --timed 5 --terminate_after_timed --no_console_stats --stop_existing_session --session_name PCDoctorProbe --v1_metrics 2>&1 | Out-String
+          if (Test-Path $csv1) { Get-Content $csv1 -TotalCount 3 } else { Write-Output 'no CSV written' }
