@@ -1,0 +1,172 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analysis:
+    name: analysis (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: workers/pyproject.toml
+      - run: pip install -e "workers[dev]"
+      - run: ruff check workers && ruff format --check workers
+      - run: pytest workers -q
+      - name: The sample runs still get their expected diagnosis
+        run: pcdoctor-analyze rules | tail -n 1
+
+  api:
+    name: api (${{ matrix.database }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, postgres]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pcdoctor
+          POSTGRES_PASSWORD: pcdoctor
+          POSTGRES_DB: pcdoctor_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pcdoctor" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      PCDOCTOR_TEST_DATABASE_URL: ${{ matrix.database == 'postgres' && 'postgresql://pcdoctor:pcdoctor@localhost:5432/pcdoctor_test' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            workers/pyproject.toml
+            api/pyproject.toml
+      - run: pip install -e workers -e "api[dev]"
+      - run: ruff check api && ruff format --check api
+      - name: Migrations match the models
+        working-directory: api
+        env:
+          PCDOCTOR_DATABASE_URL: ${{ env.PCDOCTOR_TEST_DATABASE_URL }}
+          PCDOCTOR_DATA_DIR: ${{ runner.temp }}/migration-check
+        run: alembic upgrade head && alembic check
+      - run: pytest api -q
+
+  collector:
+    name: collector (real Windows)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scripts are plain ASCII and the launcher has CRLF line endings
+        shell: pwsh
+        run: |
+          $bad = Get-ChildItem collector -Recurse -Include *.ps1, *.psm1, *.psd1, *.cmd | Where-Object {
+            [System.IO.File]::ReadAllBytes($_.FullName) | Where-Object { $_ -gt 127 } | Select-Object -First 1
+          }
+          if ($bad) { Write-Error "Non-ASCII characters in: $($bad.Name -join ', ')"; exit 1 }
+          $cmd = [System.IO.File]::ReadAllText('collector/PCDoctor.cmd')
+          if ($cmd -notmatch "`r`n" -or $cmd -match "(?<!`r)`n") { Write-Error 'PCDoctor.cmd must use CRLF line endings'; exit 1 }
+          'ok'
+
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) { Install-Module PSScriptAnalyzer -Force -Scope CurrentUser }
+          $found = Invoke-ScriptAnalyzer -Path collector -Recurse -Settings collector/PSScriptAnalyzerSettings.psd1
+          $found | Format-Table Severity, RuleName, ScriptName, Line, Message -AutoSize -Wrap | Out-String -Width 200
+          if ($found) { Write-Error "$(@($found).Count) PSScriptAnalyzer finding(s)"; exit 1 }
+          'clean'
+
+      - name: Unit tests on Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          Import-Module Pester -MinimumVersion 5.0 -Force
+          $config = New-PesterConfiguration
+          $config.Run.Path = 'collector/tests'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $config
+
+      - name: Unit tests on PowerShell 7
+        shell: pwsh
+        run: |
+          $config = New-PesterConfiguration
+          $config.Run.Path = 'collector/tests'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Normal'
+          Invoke-Pester -Configuration $config
+
+      - name: Quick run on Windows PowerShell 5.1
+        id: quick
+        shell: powershell
+        run: collector/tests/Invoke-IntegrationTest.ps1 -Mode Quick -Shell powershell
+
+      - name: Quick run on PowerShell 7
+        shell: pwsh
+        run: collector/tests/Invoke-IntegrationTest.ps1 -Mode Quick -Shell pwsh
+
+      - name: Fetch PresentMon (checks SHA-256 and Intel's signature)
+        shell: powershell
+        run: collector/Get-Tools.ps1
+
+      - name: Capture run on Windows PowerShell 5.1
+        id: capture
+        shell: powershell
+        run: collector/tests/Invoke-IntegrationTest.ps1 -Mode Capture -Seconds 8 -Shell powershell
+
+      - name: Launcher runs the collector
+        shell: cmd
+        env:
+          PCDOCTOR_NO_ELEVATE: "1"
+        run: |
+          call collector\PCDoctor.cmd -Mode Quick -NonInteractive -OutputDir "%RUNNER_TEMP%\launcher-run" < nul
+          dir /b "%RUNNER_TEMP%\launcher-run\*.zip"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: The analyzer reads what the collector wrote
+        shell: pwsh
+        run: |
+          pip install -q -e workers
+          foreach ($dir in '${{ steps.quick.outputs.run_dir }}', '${{ steps.capture.outputs.run_dir }}') {
+            Write-Host "=== $dir"
+            pcdoctor-analyze $dir
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            $result = pcdoctor-analyze $dir --json | ConvertFrom-Json
+            $unread = @($result.notes | Where-Object { $_ -match 'could not be read|is missing|does not know' })
+            if ($unread) { Write-Error "The analyzer could not read the collector's output: $($unread -join '; ')"; exit 1 }
+            if (-not $result.device.cpu) { Write-Error 'No CPU in the analysis result'; exit 1 }
+          }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: collector-runs
+          path: |
+            ${{ steps.quick.outputs.run_dir }}
+            ${{ steps.capture.outputs.run_dir }}
+          if-no-files-found: ignore
+          retention-days: 7

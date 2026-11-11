@@ -71,8 +71,26 @@ _WHEA_ADVICE: dict[str, tuple[str, list[str]]] = {
 }
 
 
-def _whea_component(message: str) -> str:
-    match = _COMPONENT.search(message or "")
+# WHEA-Logger event ids, from the provider's own definitions on Windows
+# (docs/verified-facts.md). Using the id first keeps this working on a
+# non-English Windows, where the message text is translated.
+WHEA_FATAL_IDS = frozenset({1, 16, 18, 20, 22, 24, 26, 29, 40, 42, 44, 46, 48})
+WHEA_CORRECTED_IDS = frozenset({2, 17, 19, 21, 23, 25, 27, 28, 41, 43, 45, 47, 49})
+_WHEA_COMPONENT_BY_ID: dict[int, str] = {
+    **dict.fromkeys((18, 19, 28, 29), "Processor Core"),
+    **dict.fromkeys((20, 21), "AMD Northbridge"),
+    **dict.fromkeys((22, 23, 46, 47, 48, 49), "Memory"),
+    **dict.fromkeys((24, 25, 42, 43), "PCI/PCI-X Bus"),
+    **dict.fromkeys((26, 27, 44, 45), "PCI/PCI-X Device"),
+}
+
+
+def _whea_component(event: dict[str, Any]) -> str:
+    known = _WHEA_COMPONENT_BY_ID.get(event.get("id"))  # type: ignore[arg-type]
+    if known:
+        return known
+    # Ids 16, 17, 40 and 41 name the component only in the message text.
+    match = _COMPONENT.search(str(event.get("message", "")))
     return match.group(1).strip() if match else "Unknown component"
 
 
@@ -92,6 +110,12 @@ def _whea_advice(components: Counter[str]) -> tuple[str, list[str]]:
 
 
 def _is_corrected(event: dict[str, Any]) -> bool:
+    event_id = event.get("id")
+    if event_id in WHEA_CORRECTED_IDS:
+        return True
+    if event_id in WHEA_FATAL_IDS:
+        return False
+    # An id this list does not know: fall back to the wording, then the level.
     message = str(event.get("message", "")).lower()
     if "corrected" in message:
         return True
@@ -106,7 +130,7 @@ def _whea_summary(events: list[dict[str, Any]]) -> tuple[Counter[str], Counter[s
     ids: list[str] = []
     for event in events:
         message = str(event.get("message", ""))
-        components[_whea_component(message)] += 1
+        components[_whea_component(event)] += 1
         match = _ERROR_TYPE.search(message)
         if match:
             types[match.group(1).strip()] += 1

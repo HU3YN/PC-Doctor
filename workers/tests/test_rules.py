@@ -264,6 +264,32 @@ def test_whea_event_29_is_fatal_despite_its_warning_level():
     assert events.whea_corrected(run, T) == []
 
 
+def test_whea_is_classified_by_event_id_on_a_non_english_windows():
+    german_fatal = "Schwerwiegender Hardwarefehler.\n\nGemeldet von Komponente: Prozessorkern"
+    german_corrected = (
+        "Ein korrigierter Hardwarefehler ist aufgetreten.\n\nKomponente: Arbeitsspeicher"
+    )
+    run = make_run(
+        events=[event(WHEA, 18, german_fatal), event(WHEA, 47, german_corrected, "Warning")]
+    )
+    fatal = one(events.whea_fatal(run, T))
+    assert fatal.evidence["components"] == {"Processor Core": 1} and fatal.category == "cpu"
+    corrected = one(events.whea_corrected(run, T))
+    assert corrected.evidence["components"] == {"Memory": 1} and corrected.category == "memory"
+
+
+def test_whea_with_an_unknown_id_falls_back_to_wording_then_level():
+    run = make_run(
+        events=[
+            event(WHEA, 900, "A corrected hardware error has occurred.", "Error"),
+            event(WHEA, 901, "Something else entirely.", "Error"),
+            event(WHEA, 902, "Something else entirely.", "Warning"),
+        ]
+    )
+    assert one(events.whea_corrected(run, T)).evidence["count"] == 2
+    assert one(events.whea_fatal(run, T)).evidence["count"] == 1
+
+
 def test_whea_informational_records_are_ignored():
     run = make_run(events=[event(WHEA, 3, "A hardware event has occurred.", "Information")])
     assert events.whea_fatal(run, T) == [] and events.whea_corrected(run, T) == []
