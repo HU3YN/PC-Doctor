@@ -74,10 +74,14 @@ class SampleRun:
         return root
 
     def zip_bytes(self) -> bytes:
+        """The run as a zip. Byte-for-byte the same every time it is built."""
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
             for filename, content in self.files.items():
-                archive.writestr(filename, content)
+                # A fixed timestamp: writestr() would stamp "now" otherwise.
+                info = zipfile.ZipInfo(filename, date_time=(2026, 11, 1, 18, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                archive.writestr(info, content)
         return buffer.getvalue()
 
 

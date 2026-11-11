@@ -160,6 +160,7 @@ def test_each_sample_run_gets_exactly_its_expected_diagnosis(name, tmp_path):
 def test_sample_runs_are_deterministic_and_marked_synthetic():
     first, second = synth.build("cpu_overheat"), synth.build("cpu_overheat")
     assert first.files == second.files
+    assert first.zip_bytes() == second.zip_bytes()
     assert json.loads(first.files["manifest.json"])["synthetic"] is True
 
 
