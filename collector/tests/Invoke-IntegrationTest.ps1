@@ -62,7 +62,9 @@ function Read-Json([string]$Name) {
 $manifest = Read-Json 'manifest.json'
 Assert-That ($manifest.schema_version -eq 1) 'manifest: schema_version is 1'
 Assert-That ($manifest.mode -eq $Mode.ToLowerInvariant()) "manifest: mode is $($Mode.ToLowerInvariant())"
-Assert-That ($manifest.started_at -match '^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$') 'manifest: started_at is ISO UTC'
+# Checked on the file's text: PowerShell 7 turns date strings into date objects when reading JSON.
+$manifestText = [System.IO.File]::ReadAllText((Join-Path $runDir.FullName 'manifest.json'))
+Assert-That ($manifestText -match '"started_at":\s*"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"') 'manifest: started_at is ISO UTC'
 Assert-That ($manifest.label -eq 'integration test') 'manifest: label is kept'
 Assert-That ($manifest.collector.version -match '^\d+\.\d+\.\d+$') 'manifest: collector version'
 Write-Host "  manifest warnings: $(@($manifest.warnings) -join ' | ')"

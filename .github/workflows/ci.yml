@@ -20,8 +20,8 @@ jobs:
       matrix:
         python: ["3.11", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -53,8 +53,8 @@ jobs:
     env:
       PCDOCTOR_TEST_DATABASE_URL: ${{ matrix.database == 'postgres' && 'postgresql://pcdoctor:pcdoctor@localhost:5432/pcdoctor_test' || '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -76,7 +76,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Scripts are plain ASCII and the launcher has CRLF line endings
         shell: pwsh
@@ -143,7 +143,7 @@ jobs:
           call collector\PCDoctor.cmd -Mode Quick -NonInteractive -OutputDir "%RUNNER_TEMP%\launcher-run" < nul
           dir /b "%RUNNER_TEMP%\launcher-run\*.zip"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
