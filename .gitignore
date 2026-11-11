@@ -38,3 +38,6 @@ PCDoctor-run-*.zip
 Thumbs.db
 .idea/
 .vscode/
+
+# Screenshots and scratch output
+/shots/
