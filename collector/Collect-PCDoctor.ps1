@@ -200,6 +200,8 @@ if ($Mode -eq 'Capture') {
     $pmVersion = $null
     if ($presentMon) {
         try { $pmVersion = (Get-Item -LiteralPath $presentMon).VersionInfo.ProductVersion } catch { }
+        # The standalone build carries no version resource; its file name does.
+        if (-not $pmVersion -and (Split-Path -Leaf $presentMon) -match '(\d+\.\d+\.\d+)') { $pmVersion = $Matches[1] }
         $pmArguments = Get-PCDoctorPresentMonArguments -OutputFile $rawCsv -Seconds $Seconds -Process $Process
         try {
             # PresentMon prints its banner on stderr. Its output goes to files:

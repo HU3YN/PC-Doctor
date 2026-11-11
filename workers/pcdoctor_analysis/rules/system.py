@@ -11,6 +11,7 @@ from ..model import Finding, Severity, Thresholds
 from ..presentmon import percentile
 from . import rule
 
+INBOX_DRIVER_DATE = (2006, 6, 21)
 POWER_SAVER_GUID = "a1841308-3541-4fab-bc81-f71556f20b4a"
 # Speeds a kit runs at when no XMP/EXPO profile is loaded (JEDEC defaults).
 DEFAULT_SPEEDS = {"DDR4": 2666, "DDR5": 4800}
@@ -27,7 +28,32 @@ def _number(value: Any) -> float | None:
         return None
 
 
+# What firmware writes when nobody filled a field in.
+_PLACEHOLDERS = frozenset(
+    {"", "none", "unknown", "n/a", "default string", "to be filled by o.e.m.", "not specified"}
+)
+_VM_MARKERS = ("virtual", "vmware", "qemu", "kvm", "xen", "parallels", "bochs")
+
+
+def _real(value: Any) -> str:
+    """The text, or "" when it is a firmware placeholder like "None"."""
+    text = str(value or "").strip()
+    return "" if text.lower() in _PLACEHOLDERS else text
+
+
+def is_virtual_machine(run: RunData) -> bool:
+    system = run.specs.get("system") if run.specs else None
+    if not isinstance(system, dict):
+        return False
+    text = f"{system.get('manufacturer') or ''} {system.get('model') or ''}".lower()
+    return any(marker in text for marker in _VM_MARKERS)
+
+
 def _modules(run: RunData) -> list[dict[str, Any]]:
+    # A virtual machine's "memory modules" are whatever the hypervisor made
+    # up (Hyper-V shows 1 GB + 7 GB), so RAM layout rules do not apply.
+    if is_virtual_machine(run):
+        return []
     memory = run.specs.get("memory") if run.specs else None
     modules = memory.get("modules", []) if isinstance(memory, dict) else []
     return [m for m in modules if (_number(m.get("capacity_bytes")) or 0) > 0]
@@ -159,13 +185,13 @@ def mixed_modules(run: RunData, t: Thresholds) -> list[Finding] | None:
     if len(modules) < 2:
         return []
     sizes = {int(_number(m.get("capacity_bytes")) or 0) for m in modules}
-    parts = {str(m.get("part_number") or "").strip() for m in modules}
+    parts = {_real(m.get("part_number")) for m in modules}
     parts.discard("")
     if len(sizes) <= 1 and len(parts) <= 1:
         return []
     described = ", ".join(
         f"{(_number(m.get('capacity_bytes')) or 0) / 1024**3:.0f} GB "
-        f"{str(m.get('part_number') or 'unknown part').strip()}"
+        f"{_real(m.get('part_number')) or 'unknown part'}"
         for m in modules
     )
     return [
@@ -316,10 +342,13 @@ def gpu_driver_missing(run: RunData, t: Thresholds) -> list[Finding] | None:
 def gpu_driver_old(run: RunData, t: Thresholds) -> list[Finding] | None:
     dated = []
     for gpu in _gpus(run):
-        if "basic display" in str(gpu.get("name", "")).lower():
+        # Every driver that ships inside Windows is dated 2006-06-21, whatever
+        # its real age (Microsoft does this so a vendor driver always wins).
+        # That date says nothing, so those drivers are not judged.
+        if str(gpu.get("name", "")).lower().startswith("microsoft"):
             continue
         when = parse_time(gpu.get("driver_date"))
-        if when:
+        if when and (when.year, when.month, when.day) != INBOX_DRIVER_DATE:
             dated.append((gpu, when))
     if not dated:
         return None

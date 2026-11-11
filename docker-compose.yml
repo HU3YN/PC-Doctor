@@ -1,0 +1,57 @@
+# The whole app on one machine:
+#
+#   docker compose up -d --build      then open http://localhost:8080
+#   docker compose logs -f api        to watch the API
+#   docker compose down               to stop (your data is kept)
+#
+# Data lives in two named volumes: pgdata (the database, including your work
+# log) and rundata (the uploaded run files). "docker compose down -v" deletes
+# both - export the work log first (Work log > Backup).
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pcdoctor
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pcdoctor}
+      POSTGRES_DB: pcdoctor
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pcdoctor -d pcdoctor"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      PCDOCTOR_DATABASE_URL: postgresql://pcdoctor:${POSTGRES_PASSWORD:-pcdoctor}@db:5432/pcdoctor
+      PCDOCTOR_DATA_DIR: /data
+      PCDOCTOR_MAX_UPLOAD_MB: ${PCDOCTOR_MAX_UPLOAD_MB:-200}
+    volumes:
+      - rundata:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    ports:
+      # 127.0.0.1 = reachable from this computer only. There are no logins
+      # yet, so set PCDOCTOR_BIND=0.0.0.0 only on a network you trust.
+      - "${PCDOCTOR_BIND:-127.0.0.1}:${PCDOCTOR_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  rundata:

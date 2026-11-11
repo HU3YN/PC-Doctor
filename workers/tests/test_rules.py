@@ -620,6 +620,26 @@ def test_gpu_driver_missing_and_old():
     assert one(system.gpu_driver_old(make_run(specs=old), T)).evidence["age_months"] == 34
 
 
+def test_windows_inbox_drivers_are_not_called_old():
+    # Seen on a real Windows machine: "Microsoft Hyper-V Video", dated 2006-06-21.
+    hyperv = {"gpu": [{"name": "Microsoft Hyper-V Video", "driver_date": "2006-06-21T00:00:00Z"}]}
+    assert system.gpu_driver_old(make_run(specs=hyperv), T) is None
+    inbox_date = {"gpu": [{"name": "Some Adapter", "driver_date": "2006-06-21T00:00:00Z"}]}
+    assert system.gpu_driver_old(make_run(specs=inbox_date), T) is None
+
+
+def test_ram_layout_rules_skip_virtual_machines_and_placeholder_part_numbers():
+    # Seen on a real Hyper-V machine: two "modules" of 1 GB and 7 GB, part number "None".
+    vm = specs(
+        [module(gb=1, part="None"), module(gb=7, part="None")],
+        system={"manufacturer": "Microsoft Corporation", "model": "Virtual Machine"},
+    )
+    for rule_function in (system.single_channel, system.slow_speed, system.mixed_modules):
+        assert rule_function(make_run(specs=vm), T) is None
+    placeholders = specs([module(part="None"), module(part="To Be Filled By O.E.M.")])
+    assert system.mixed_modules(make_run(specs=placeholders), T) == []
+
+
 def test_power_plan():
     assert system.power_saver_plan(make_run(), T) is None
     balanced = {"power_plan": "Balanced", "power_plan_guid": "381b4222-f694-41f0-9685-ff5bb260df2e"}
