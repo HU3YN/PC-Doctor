@@ -30,7 +30,7 @@ WEIGHT_CATEGORY = 3.0
 WEIGHT_PART = 1.5
 WEIGHT_PART_MAX = 4.5
 WEIGHT_TEXT = 5.0
-MIN_SCORE = 1.5
+MIN_SCORE = 2.0
 
 _WORD = re.compile(r"[a-z0-9][a-z0-9+#.\-]*")
 _HEX_CODE = re.compile(r"^0[xX][0-9A-Fa-f]{1,8}$")
@@ -53,7 +53,7 @@ STOP_WORDS = frozenset(
 # Different words technicians and customers use for the same thing, as stems.
 # Each group is folded to its first word.
 _SYNONYM_GROUPS = [
-    ("restart", "reboot", "reset"),
+    ("restart", "reboot"),
     ("shut", "shutdown", "poweroff"),
     ("freez", "hang", "hung", "lockup", "unresponsiv"),
     ("stutter", "hitch", "lag", "jitter", "judder", "choppy"),

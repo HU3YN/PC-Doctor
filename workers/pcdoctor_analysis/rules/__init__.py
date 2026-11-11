@@ -12,6 +12,7 @@ tool detect" is simply the number of rules.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -74,6 +75,15 @@ _SETUP_CODES = frozenset(
 )
 
 
+# "3 blue screen(s)" -> "3 blue screens", "1 time(s)" -> "1 time".
+_COUNTED = re.compile(r"\b(\d+)(x?) ([^().:;,\d]*?)\((s|es)\)")
+
+
+def tidy_plurals(text: str) -> str:
+    """Rules write "N thing(s)"; readers get the right form for N."""
+    return _COUNTED.sub(lambda m: f"{m[1]}{m[2]} {m[3]}{'' if m[1] == '1' else m[4]}", text)
+
+
 def _order(finding: Finding) -> tuple[int, int]:
     """Worst first. Within a severity: faults, then setup, then symptoms.
 
@@ -129,6 +139,8 @@ def run_rules(
                     raise AssertionError(
                         f"Rule {entry.code} emitted a finding with code {finding.code}"
                     )
+                finding.title = tidy_plurals(finding.title)
+                finding.summary = tidy_plurals(finding.summary)
             findings.extend(result)
         else:
             status = "passed"

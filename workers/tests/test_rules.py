@@ -43,6 +43,24 @@ def test_rule_codes_are_unique_and_namespaced():
     assert all(r.category in CATEGORIES for r in rules)
 
 
+def test_counts_read_naturally():
+    from pcdoctor_analysis.rules import tidy_plurals
+
+    assert tidy_plurals("3 blue screen(s): 0x124") == "3 blue screens: 0x124"
+    assert tidy_plurals("1 blue screen(s) and 2 other code(s)") == "1 blue screen and 2 other codes"
+    assert (
+        tidy_plurals("stopped responding 1 time(s) (3 event(s))")
+        == "stopped responding 1 time (3 events)"
+    )
+    assert tidy_plurals("2 crash(es) where Windows") == "2 crashes where Windows"
+    assert tidy_plurals("nothing to change (s)") == "nothing to change (s)"
+    findings, _, _ = run_rules(make_run(events=[event(KP, 86), event(KP, 41, BugcheckCode=0)]))
+    assert [f.title for f in findings] == [
+        "Windows shut down for overheating 1 time",  # critical, so first
+        "1 unexpected shutdown with no stop code",
+    ]
+
+
 def test_an_empty_run_checks_nothing_and_finds_nothing():
     findings, checks, errors = run_rules(make_run())
     assert findings == [] and errors == []
