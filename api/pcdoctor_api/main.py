@@ -14,13 +14,14 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__
 from .config import Settings, get_settings
 from .db import migrate
-from .routers import intake, reference, runs, worklog
+from .routers import assist, auth, inbox, intake, reference, runs, worklog
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     settings.runs_dir.mkdir(parents=True, exist_ok=True)
+    settings.photos_dir.mkdir(parents=True, exist_ok=True)
     if settings.auto_migrate:
         migrate()
     yield
@@ -68,6 +69,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(runs.router)
     app.include_router(worklog.router)
     app.include_router(intake.router)
+    app.include_router(runs.shared)
+    app.include_router(auth.router)
+    app.include_router(inbox.router)
+    app.include_router(assist.router)
 
     dist = settings.web_dist
     if dist is None:

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..config import Settings, get_settings
 from ..db import get_db
+from ..deps import ClientKey, Master, MaybeAccount
 from ..models import Run, WorkLogEntry
 from ..schemas import (
     FindingOut,
@@ -23,6 +24,7 @@ from ..schemas import (
     SimilarCase,
     WorkLogBrief,
 )
+from ..services import auth as auth_service
 from ..services import ingest as ingest_service
 from ..services.similarity import Query as SimilarityQuery
 from ..services.similarity import find_similar
@@ -114,24 +116,44 @@ async def upload_run(
     response: Response,
     db: Db,
     settings: Config,
+    account: MaybeAccount,
+    key: ClientKey,
     file: Annotated[
         UploadFile, File(description="The .zip from the collector, or a PresentMon .csv")
     ],
     label: Annotated[str, Form(max_length=200)] = "",
 ) -> RunUploaded:
+    """Upload a run. Anyone may: a guest gets back a private key for that one
+    run and can see nothing else; the master sees every run."""
+    guest = account is None
+    if guest and not auth_service.guest_uploads.allow(key):
+        raise HTTPException(
+            status_code=429, detail="Too many uploads from here. Try again in an hour."
+        )
     data = await read_limited(file, settings.max_upload_mb * 1024 * 1024)
     try:
-        result = ingest_service.ingest(db, settings, data, label=label)
+        result = ingest_service.ingest(
+            db, settings, data, label=label, source="guest" if guest else "master"
+        )
     except ingest_service.UploadError as error:
         raise HTTPException(status_code=400, detail=str(error)) from None
     if not result.created:
         response.status_code = 200
-    return RunUploaded(run=RunSummary.model_validate(result.run), duplicate=not result.created)
+    share_key = None
+    if guest:
+        # A fresh key each time; only its hash is kept.
+        share_key = auth_service.new_token()
+        result.run.share_hash = auth_service.token_hash(share_key)
+        db.commit()
+    return RunUploaded(
+        run=RunSummary.model_validate(result.run), duplicate=not result.created, share_key=share_key
+    )
 
 
 @router.get("", response_model=RunList)
 def list_runs(
     db: Db,
+    _: Master,
     verdict: Annotated[str | None, Query(pattern="^(critical|warning|ok)$")] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -146,18 +168,18 @@ def list_runs(
 
 
 @router.get("/{run_id}", response_model=RunDetail)
-def read_run(run_id: str, db: Db) -> RunDetail:
+def read_run(run_id: str, db: Db, _: Master) -> RunDetail:
     return detail(db, get_run(db, run_id))
 
 
 @router.get("/{run_id}/series")
-def read_series(run_id: str, db: Db) -> dict[str, Any]:
+def read_series(run_id: str, db: Db, _: Master) -> dict[str, Any]:
     """The chart data: frame times and sensor readings, already downsampled."""
     return (get_run(db, run_id).result or {}).get("series") or {}
 
 
 @router.patch("/{run_id}", response_model=RunDetail)
-def update_run(run_id: str, patch: RunPatch, db: Db) -> RunDetail:
+def update_run(run_id: str, patch: RunPatch, db: Db, _: Master) -> RunDetail:
     run = get_run(db, run_id)
     if patch.label is not None:
         run.label = patch.label.strip()
@@ -168,7 +190,7 @@ def update_run(run_id: str, patch: RunPatch, db: Db) -> RunDetail:
 
 
 @router.post("/{run_id}/reanalyze", response_model=RunDetail)
-def reanalyze_run(run_id: str, db: Db, settings: Config) -> RunDetail:
+def reanalyze_run(run_id: str, db: Db, settings: Config, _: Master) -> RunDetail:
     run = get_run(db, run_id)
     try:
         ingest_service.reanalyze(db, settings, run)
@@ -179,7 +201,7 @@ def reanalyze_run(run_id: str, db: Db, settings: Config) -> RunDetail:
 
 
 @router.get("/{run_id}/download")
-def download_run(run_id: str, db: Db, settings: Config) -> FileResponse:
+def download_run(run_id: str, db: Db, settings: Config, _: Master) -> FileResponse:
     run = get_run(db, run_id)
     path = settings.runs_dir / run.file_name
     if not path.is_file():
@@ -190,5 +212,33 @@ def download_run(run_id: str, db: Db, settings: Config) -> FileResponse:
 
 
 @router.delete("/{run_id}", status_code=204)
-def remove_run(run_id: str, db: Db, settings: Config) -> None:
+def remove_run(run_id: str, db: Db, settings: Config, _: Master) -> None:
     ingest_service.delete_run(db, settings, get_run(db, run_id))
+
+
+shared = APIRouter(prefix="/api/shared", tags=["guest"])
+
+
+def run_for_key(db: Session, key: str) -> Run:
+    run = db.scalar(
+        select(Run)
+        .where(Run.share_hash == auth_service.token_hash(key))
+        .options(selectinload(Run.findings))
+    )
+    if run is None:
+        raise HTTPException(status_code=404, detail="This link is not valid (or no longer is).")
+    return run
+
+
+@shared.get("/{key}", response_model=RunDetail)
+def read_shared_run(key: str, db: Db) -> RunDetail:
+    """One run, for whoever holds its private key. Nothing from the work log
+    and nothing about any other run is included."""
+    run = run_for_key(db, key)
+    full = detail(db, run)
+    return full.model_copy(update={"similar_cases": [], "work_log": [], "notes": ""})
+
+
+@shared.get("/{key}/series")
+def read_shared_series(key: str, db: Db) -> dict[str, Any]:
+    return (run_for_key(db, key).result or {}).get("series") or {}

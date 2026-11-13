@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from .. import __version__
 from ..config import Settings, get_settings
 from ..db import get_db
+from ..deps import Master, MaybeAccount
 from ..models import Finding, Run, WorkLogEntry
 from ..schemas import DEVICE_TYPES, STATUSES, DemoResult, SimilarCase, WorkLogBrief
 from ..services import demo as demo_service
@@ -68,14 +69,17 @@ def stop_codes(
 
 
 @router.get("/stopcodes/{code}")
-def stop_code(code: str, db: Db) -> dict[str, Any]:
+def stop_code(code: str, db: Db, account: MaybeAccount) -> dict[str, Any]:
     """One stop code, with the work-log cases where it has been seen before."""
     entry = lookup(code)
     if entry is None:
         raise HTTPException(status_code=404, detail="Stop code not in the built-in list.")
-    matches = find_similar(
-        list(db.scalars(select(WorkLogEntry))), SimilarityQuery(codes=[entry.hex]), limit=10
-    )
+    # The meaning of a stop code is public knowledge; the earlier jobs are the master's.
+    matches = []
+    if account is not None:
+        matches = find_similar(
+            list(db.scalars(select(WorkLogEntry))), SimilarityQuery(codes=[entry.hex]), limit=10
+        )
     return {
         **entry.to_dict(),
         "cases": [
@@ -88,7 +92,7 @@ def stop_code(code: str, db: Db) -> dict[str, Any]:
 
 
 @router.get("/stats")
-def stats(db: Db, include_demo: bool = False) -> dict[str, Any]:
+def stats(db: Db, _: Master, include_demo: bool = False) -> dict[str, Any]:
     """Counts for the overview page - and for tracking the project's numbers."""
     runs = list(
         db.scalars(select(Run) if include_demo else select(Run).where(Run.is_demo.is_(False)))
@@ -134,12 +138,12 @@ def stats(db: Db, include_demo: bool = False) -> dict[str, Any]:
 
 
 @router.post("/demo", response_model=DemoResult)
-def load_demo(db: Db, settings: Config) -> DemoResult:
+def load_demo(db: Db, settings: Config, _: Master) -> DemoResult:
     runs, entries = demo_service.load_demo(db, settings)
     return DemoResult(runs=runs, work_log=entries)
 
 
 @router.delete("/demo", response_model=DemoResult)
-def clear_demo(db: Db, settings: Config) -> DemoResult:
+def clear_demo(db: Db, settings: Config, _: Master) -> DemoResult:
     runs, entries = demo_service.clear_demo(db, settings)
     return DemoResult(runs=runs, work_log=entries)

@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
 from ..db import get_db
+from ..deps import Master
 from ..models import WorkLogEntry
 from ..schemas import SimilarCase, WorkLogBrief
 from ..services import photo as photo_service
@@ -114,6 +115,7 @@ def no_boot_guide() -> list[dict[str, Any]]:
 @router.post("/photos")
 async def read_photo(
     db: Db,
+    _: Master,
     file: Annotated[UploadFile, File(description="A photo of the error screen (JPG or PNG)")],
 ) -> dict[str, Any]:
     """Read an error photo: the text on it, any stop codes, and earlier jobs with them.

@@ -62,6 +62,7 @@ class RunSummary(BaseModel):
     fps_1pct_low: float | None
     is_demo: bool
     rules_version: str
+    source: str = "master"
 
 
 class RunList(BaseModel):
@@ -115,6 +116,8 @@ class RunDetail(RunSummary):
 class RunUploaded(BaseModel):
     run: RunSummary
     duplicate: bool  # True = this exact file was already uploaded
+    # Guests only: the key of the private link to this one run (/r/<key>).
+    share_key: str | None = None
 
 
 class RunPatch(BaseModel):

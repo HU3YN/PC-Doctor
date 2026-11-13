@@ -174,6 +174,7 @@ def ingest(
     *,
     label: str = "",
     is_demo: bool = False,
+    source: str = "master",
 ) -> Ingested:
     if not data:
         raise UploadError("The uploaded file is empty.")
@@ -203,6 +204,7 @@ def ingest(
         content_hash=content_hash,
         file_bytes=len(stored),
         is_demo=is_demo or bool(manifest.get("synthetic")),
+        source=source,
     )
     run.file_name = f"{run.id}.zip"
     apply_result(run, result)

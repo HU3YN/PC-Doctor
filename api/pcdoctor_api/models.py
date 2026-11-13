@@ -42,6 +42,11 @@ class Run(Base):
     file_name: Mapped[str] = mapped_column(String(80))  # under the runs folder
     file_bytes: Mapped[int] = mapped_column(Integer, default=0)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Who sent it: "master" (signed in) or "guest" (anyone, without an account).
+    source: Mapped[str] = mapped_column(String(10), default="master")
+    # SHA-256 of the private link key a guest uses to see this one run. Only
+    # the hash is stored, so reading the database does not reveal the links.
+    share_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
 
     # A summary, copied out of the result so lists do not load the big JSON.
     verdict: Mapped[str] = mapped_column(String(10), default="ok", index=True)
@@ -115,3 +120,57 @@ class WorkLogEntry(Base):
     )
 
     run: Mapped[Run | None] = relationship(back_populates="work_log_entries")
+
+
+class Account(Base):
+    """Someone who can sign in. Today there is exactly one: the master."""
+
+    __tablename__ = "accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))  # scrypt, see services/auth.py
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class LoginSession(Base):
+    """A signed-in browser. The cookie holds a random token; only its hash is here."""
+
+    __tablename__ = "sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+    account: Mapped[Account] = relationship()
+
+
+class PhotoLink(Base):
+    """A temporary link (shown as a QR code) that lets a phone send photos in
+    without signing in. It can only add photos - it cannot read anything."""
+
+    __tablename__ = "photo_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    label: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class Photo(Base):
+    """A photo of a PC that will not start, waiting in the master's inbox."""
+
+    __tablename__ = "photos"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+    label: Mapped[str] = mapped_column(String(200), default="")  # from the link it came through
+    file_name: Mapped[str] = mapped_column(String(80))  # under the photos folder
+    file_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    text: Mapped[str] = mapped_column(Text, default="")  # what OCR read
+    reading: Mapped[dict[str, Any]] = mapped_column(JsonType, default=dict)  # codes found
+    ai: Mapped[dict[str, Any] | None] = mapped_column(JsonType)  # the assistant's notes
+    work_log_id: Mapped[int | None] = mapped_column(ForeignKey("work_log.id", ondelete="SET NULL"))

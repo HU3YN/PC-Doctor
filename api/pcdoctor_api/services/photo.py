@@ -83,3 +83,28 @@ def read_text(data: bytes) -> str:
         return pytesseract.image_to_string(image, config="--psm 6", timeout=30).strip()
     except RuntimeError:
         raise PhotoError("Reading the photo took too long. Try a closer, sharper photo.") from None
+
+
+def to_jpeg(data: bytes) -> bytes:
+    """Re-encode an upload as a plain JPEG.
+
+    Decoding and re-encoding proves it really is an image, shrinks phone
+    photos, and drops everything that is not pixels - including the GPS
+    position and phone model that cameras hide inside the file.
+    """
+    try:
+        from PIL import Image, ImageOps, UnidentifiedImageError
+    except ImportError as error:
+        raise OcrUnavailable("Photo support is not installed on this server.") from error
+    Image.MAX_IMAGE_PIXELS = MAX_PIXELS
+    try:
+        image = Image.open(io.BytesIO(data))
+        image.load()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, ValueError):
+        raise PhotoError("That file is not a photo this can read (use JPG or PNG).") from None
+    image = ImageOps.exif_transpose(image).convert("RGB")
+    if max(image.size) > MAX_SIDE:
+        image.thumbnail((MAX_SIDE, MAX_SIDE))
+    out = io.BytesIO()
+    image.save(out, "JPEG", quality=85)
+    return out.getvalue()

@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..deps import require_master
 from ..models import Run, WorkLogEntry
 from ..schemas import (
     ImportResult,
@@ -29,7 +30,8 @@ from ..services.privacy import privacy_warnings
 from ..services.similarity import Query as SimilarityQuery
 from ..services.similarity import code_key, find_similar, tokenize
 
-router = APIRouter(prefix="/api/worklog", tags=["work log"])
+# The work log is the master's private record: every endpoint needs a sign-in.
+router = APIRouter(prefix="/api/worklog", tags=["work log"], dependencies=[Depends(require_master)])
 
 Db = Annotated[Session, Depends(get_db)]
 

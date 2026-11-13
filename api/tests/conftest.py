@@ -22,7 +22,8 @@ from pcdoctor_api import db  # noqa: E402
 from pcdoctor_api.config import get_settings  # noqa: E402
 from pcdoctor_api.main import create_app  # noqa: E402
 
-TABLES = ("work_log", "findings", "runs")
+TABLES = ("photos", "photo_links", "sessions", "accounts", "work_log", "findings", "runs")
+MASTER = {"username": "huey", "password": "correct horse battery"}
 
 
 @pytest.fixture
@@ -36,9 +37,25 @@ def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
         if not get_settings().sqlalchemy_url.startswith("sqlite"):
             with db.get_engine().begin() as connection:  # a shared database: start clean
                 connection.execute(text(f"TRUNCATE {', '.join(TABLES)} RESTART IDENTITY CASCADE"))
+        from pcdoctor_api.services import auth
+
+        auth.login_attempts.reset()
+        auth.guest_uploads.reset()
+        # Most tests act as the signed-in master; the "guest" fixture is everyone else.
+        code = auth.setup_code(get_settings().data_dir)
+        created = test_client.post("/api/auth/setup", json={**MASTER, "setup_code": code})
+        assert created.status_code == 200, created.text
         yield test_client
     db.reset_engine()
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def guest(client) -> Iterator[TestClient]:
+    """A second browser on the same server, not signed in."""
+    with TestClient(client.app, cookies={}) as other:
+        other.cookies.clear()
+        yield other
 
 
 @pytest.fixture

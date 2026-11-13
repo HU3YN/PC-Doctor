@@ -13,7 +13,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="PCDOCTOR_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="PCDOCTOR_", env_file=".env", extra="ignore", populate_by_name=True
+    )
 
     # Where uploaded runs and (by default) the local database live.
     data_dir: Path = Path("data")
@@ -31,6 +33,13 @@ class Settings(BaseSettings):
     # Folder holding the Windows collector, offered for download from the
     # dashboard. Found automatically when running from a checkout.
     collector_dir: Path | None = None
+    # True when a reverse proxy we run (nginx in Docker Compose) sits in front
+    # and sets X-Forwarded-For. Used only for rate limits.
+    trust_proxy: bool = False
+    # Key for the AI helper (drafting work-log entries, describing photos).
+    # Empty = the helper is switched off and everything else works as before.
+    anthropic_api_key: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")
+    ai_model: str = "claude-sonnet-5-5"
     # Extra origins allowed to call the API from a browser (comma separated).
     # The Vite dev server proxies /api, so this is normally empty.
     cors_origins: list[str] = []
@@ -56,6 +65,10 @@ class Settings(BaseSettings):
     @property
     def runs_dir(self) -> Path:
         return self.data_dir / "runs"
+
+    @property
+    def photos_dir(self) -> Path:
+        return self.data_dir / "photos"
 
 
 @lru_cache
