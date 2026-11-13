@@ -192,6 +192,7 @@ def test_every_api_route_is_either_master_only_or_deliberately_public(client):
         ("POST", "/api/auth/logout"),
         ("GET", "/api/photo-links/{token}"),
         ("POST", "/api/photo-links/{token}/photos"),
+        ("GET", "/api/metrics"),  # token only; see test_scale.py
     }
     import re
 

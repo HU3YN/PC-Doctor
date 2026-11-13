@@ -115,13 +115,28 @@ def setup_code(data_dir: Path) -> str:
 
 
 class RateLimiter:
-    """Allow at most ``limit`` events per ``window`` seconds for each key (kept in memory)."""
+    """Allow at most ``limit`` events per ``window`` seconds for each key.
 
-    def __init__(self, limit: int, window: float) -> None:
-        self.limit, self.window = limit, window
+    Counts are kept in memory, which is right for one process. With several
+    API copies behind a load balancer each would count separately, so when
+    Redis is configured the counts live there instead (see use_shared_limits).
+    """
+
+    def __init__(self, name: str, limit: int, window: float) -> None:
+        self.name, self.limit, self.window = name, limit, window
         self._events: dict[str, deque[float]] = defaultdict(deque)
+        self._redis = None
 
     def allow(self, key: str) -> bool:
+        if self._redis is not None:
+            try:
+                redis_key = f"pcdoctor:limit:{self.name}:{key}"
+                count = self._redis.incr(redis_key)
+                if count == 1:
+                    self._redis.expire(redis_key, int(self.window))
+                return count <= self.limit
+            except Exception:  # noqa: BLE001 - Redis down: fall back to counting here
+                pass
         now = time.monotonic()
         events = self._events[key]
         while events and now - events[0] > self.window:
@@ -135,5 +150,19 @@ class RateLimiter:
         self._events.clear()
 
 
-login_attempts = RateLimiter(limit=8, window=15 * 60)
-guest_uploads = RateLimiter(limit=30, window=60 * 60)
+login_attempts = RateLimiter("login", limit=8, window=15 * 60)
+guest_uploads = RateLimiter("uploads", limit=30, window=60 * 60)
+
+
+def use_shared_limits(redis_url: str) -> None:
+    """Keep rate-limit counts in Redis when one is configured."""
+    client = None
+    if redis_url:
+        try:
+            import redis
+
+            client = redis.Redis.from_url(redis_url, socket_timeout=2)
+        except ImportError:
+            print("PC Doctor: PCDOCTOR_REDIS_URL is set but the redis package is missing.")
+    for limiter in (login_attempts, guest_uploads):
+        limiter._redis = client

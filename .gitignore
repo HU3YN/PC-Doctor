@@ -41,3 +41,12 @@ Thumbs.db
 
 # Screenshots and scratch output
 /shots/
+deploy/loadtest/run.zip
+
+# Terraform state and variables (state can hold secrets)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl

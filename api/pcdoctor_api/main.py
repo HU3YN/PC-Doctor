@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from . import __version__
+from . import __version__, metrics
 from .config import Settings, get_settings
 from .db import get_db, migrate
 from .routers import assist, auth, inbox, intake, reference, runs, worklog
@@ -31,6 +31,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings.photos_dir.mkdir(parents=True, exist_ok=True)
     if settings.auto_migrate:
         migrate()
+    auth_service.use_shared_limits(settings.redis_url)
     # Until the master account exists, make sure the setup code does, and show
     # it where only someone at the server can see it.
     try:
@@ -81,6 +82,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+    app.middleware("http")(metrics.record_request)
+    app.include_router(metrics.router)
     app.include_router(reference.router)
     app.include_router(runs.router)
     app.include_router(worklog.router)

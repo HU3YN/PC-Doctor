@@ -1,0 +1,10 @@
+# kubectl apply -k deploy/k8s     (see deploy/README.md first: secrets, images, domain)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: pcdoctor
+resources:
+  - namespace.yaml
+  - data.yaml
+  - app.yaml
+  - ingress.yaml
+  - monitoring.yaml

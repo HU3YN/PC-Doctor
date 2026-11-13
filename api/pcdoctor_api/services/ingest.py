@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import io
 import tempfile
+import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -20,6 +21,7 @@ from pcdoctor_analysis.loader import load_run_dir
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import metrics
 from ..config import Settings
 from ..models import Finding, Run, new_id
 
@@ -181,6 +183,7 @@ def ingest(
     if len(data) > settings.max_upload_mb * 1024 * 1024:
         raise UploadError(f"The file is larger than the {settings.max_upload_mb} MB limit.")
 
+    started = time.perf_counter()
     content_hash = hashlib.sha256(data).hexdigest()
     existing = db.scalar(select(Run).where(Run.content_hash == content_hash))
     if existing is not None:
@@ -218,6 +221,8 @@ def ingest(
     except Exception:
         path.unlink(missing_ok=True)  # do not leave a file with no database row
         raise
+    metrics.RUNS.labels(source, run.verdict).inc()
+    metrics.ANALYSIS.observe(time.perf_counter() - started)
     return Ingested(run, created=True)
 
 

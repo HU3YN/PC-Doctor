@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     # Empty = the helper is switched off and everything else works as before.
     anthropic_api_key: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")
     ai_model: str = "claude-sonnet-5-5"
+    # --- Scale-out (Phase 3). All optional: one process still runs everything.
+    # Redis: the job queue the Go upload service fills, and shared rate limits.
+    redis_url: str = ""
+    # Folder the upload service writes checked uploads into (a shared volume).
+    spool_dir: Path | None = None
+    # Prometheus may read /api/metrics only with this token. Empty = no metrics.
+    metrics_token: str = ""
     # Extra origins allowed to call the API from a browser (comma separated).
     # The Vite dev server proxies /api, so this is normally empty.
     cors_origins: list[str] = []
@@ -65,6 +72,10 @@ class Settings(BaseSettings):
     @property
     def runs_dir(self) -> Path:
         return self.data_dir / "runs"
+
+    @property
+    def spool(self) -> Path:
+        return self.spool_dir or self.data_dir / "spool"
 
     @property
     def photos_dir(self) -> Path:
