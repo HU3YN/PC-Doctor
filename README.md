@@ -42,60 +42,71 @@ There is also a **Look up** page: type a stop code (`0x124`) or describe a
 problem ("restarts under load") to get what it means, where to look first, and
 your own earlier cases.
 
+## The everyday workflow
+
+One computer is the **master** - your laptop or bench PC. It holds the
+dashboard, every diagnosis and your work log. Everything else comes to it.
+
+| The PC you are checking... | What you do |
+|---|---|
+| **Starts Windows** | Run the collector on it from a USB stick. The result is saved on the stick. Back at the master, drop the zip on the **Runs** page. |
+| **Starts Windows and is on the same network** | Open the master's address in its browser, download the collector from **Get collector**, run it, and it uploads the result itself. No stick needed. |
+| **Shows an error but will not load Windows** | Photograph the screen. On **Won't start**, upload the photo: the stop code is read off it and looked up, with any earlier job that had it. |
+| **Shows nothing at all** | On **Won't start**, pick what you see (dead, debug LED on DRAM, beeps, ...) and follow the checklist. |
+
+Every route ends the same way: **Log this job**, so the next similar one is quicker.
+
 ## Run it
 
-### With Docker (recommended)
+### On the master computer: double-click
+
+Get the code once ([Git](https://git-scm.com/download/win) needed):
+
+```bash
+git clone https://github.com/HU3YN/PC-Doctor.git
+```
+
+Then double-click **`Start-PCDoctor.cmd`** in that folder. It uses Docker if
+Docker Desktop is running and Python if it is not, sets everything up the
+first time (a few minutes), and opens the dashboard.
+
+- **With Docker Desktop** running: nothing else to install. Includes photo reading.
+- **Without Docker**: install [Python 3.11+](https://www.python.org/downloads/)
+  (tick "Add python.exe to PATH") and, for the first start only,
+  [Node.js 20+](https://nodejs.org/). Photo reading also needs the
+  [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) program.
+
+Click "Load demo data" to look around with made-up runs and notes (removed
+again with one click).
+
+### Letting other PCs reach the master
+
+By default only the master itself can open the dashboard, because **there are
+no logins yet**. On a network you trust (home, the shop bench), start it for
+the network instead:
+
+```bash
+Start-PCDoctor.cmd -Lan
+```
+
+It prints the address other PCs should open, for example
+`http://192.168.1.20:8080`. Allow it through Windows Firewall when asked. Do
+not do this on public Wi-Fi, and do not put it on the internet until logins
+exist (Phase 4). A USB stick always works and needs none of this.
+
+### By hand
 
 ```bash
 docker compose up -d --build
-```
-
-Then open <http://localhost:8080>. Click "Load demo data" to look around with
-made-up runs and notes (removed again with one click).
-
-```bash
-docker compose logs -f api
 ```
 
 ```bash
 docker compose down
 ```
 
-Your data stays in Docker volumes between restarts. `docker compose down -v`
-deletes it, so use **Work log > Backup** first.
-
-### Without Docker
-
-Needs Python 3.11+ and Node 20+. Uses a SQLite file in `./data`, so there is
-nothing else to install.
-
-```bash
-python -m venv .venv
-```
-
-```bash
-.venv/bin/pip install -e workers -e api
-```
-
-```bash
-npm --prefix web ci && npm --prefix web run build
-```
-
-```bash
-.venv/bin/python -m pcdoctor_api
-```
-
-On Windows use `.venv\Scripts\pip` and `.venv\Scripts\python`. Then open
-<http://localhost:8000>.
-
-### Using it from another PC
-
-By default the app only answers on the computer it runs on, because **there
-are no logins yet**. On a network you trust (home, the shop bench), set
-`PCDOCTOR_BIND=0.0.0.0` in `.env`, restart, and other PCs can open
-`http://<this-computer's-address>:8080` - and the collector can send runs
-straight to it with `-UploadUrl`. Do not put it on the internet until logins
-exist (Phase 4). Moving a zip on a USB stick always works and needs none of this.
+Data stays in Docker volumes between restarts (`docker compose down -v`
+deletes it - use **Work log > Backup** first). Without Docker, see
+[`api/README.md`](api/README.md) and [`web/README.md`](web/README.md).
 
 ## What it can find
 
@@ -131,7 +142,7 @@ Details: [docs/privacy.md](docs/privacy.md).
 | [`web/`](web/) | React + TypeScript dashboard |
 | [`eval/`](eval/) | Labeled fault cases and the scoring harness |
 | [`docs/`](docs/) | Privacy, run format, rules, verified facts, safe fault testing, roadmap, results |
-| `upload-service/`, `ml/`, `deploy/` | Placeholders for Phases 3 and 4 |
+| `upload-service/`, `bot/`, `ml/`, `sensor-node/`, `fuzz/`, `deploy/` | Placeholders for later phases |
 
 ## Develop
 
@@ -161,9 +172,11 @@ for the collector - on a real Windows machine. See
 
 ## Where it is going
 
-Phase 2 adds an AI troubleshooter and a labeled fault set; Phase 3 a PyTorch
-model; Phase 4 a Go upload service, a queue, Kubernetes on AWS and logins;
-Phase 5 reading error codes from photos. See [docs/roadmap.md](docs/roadmap.md).
+Ten phases: AI troubleshooter and a labeled fault set, cloud and scale (Go,
+Terraform, k3s, Prometheus), accounts and a Discord bot, a PyTorch model, a
+Rust collector with streaming and DuckDB, an ESP32 sensor node, an inference
+benchmark, security hardening, and a trained photo reader. See
+[docs/roadmap.md](docs/roadmap.md).
 
 ## License
 

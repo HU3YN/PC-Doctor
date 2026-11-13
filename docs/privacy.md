@@ -61,6 +61,12 @@ collector `-UploadUrl`. The server keeps only the known files from the zip
 Open any of them in Notepad - they are plain text. The format is described in
 [run-format.md](run-format.md).
 
+## Photos of error screens
+
+A photo uploaded on the "Won't start" page is read in memory and thrown away.
+It is never written to disk or to the database; only the text and codes read
+from it are shown to you. Photograph the screen, not the room.
+
 ## The work log
 
 The work log is your own notes about repairs. The rule is the same: the

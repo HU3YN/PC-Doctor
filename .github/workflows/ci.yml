@@ -61,6 +61,8 @@ jobs:
           cache-dependency-path: |
             workers/pyproject.toml
             api/pyproject.toml
+      - name: Tesseract (reads error photos)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr
       - run: pip install -e workers -e "api[dev]"
       - run: ruff check api && ruff format --check api
       - name: Migrations match the models
@@ -131,7 +133,7 @@ jobs:
       - name: Scripts are plain ASCII and the launcher has CRLF line endings
         shell: pwsh
         run: |
-          $bad = Get-ChildItem collector -Recurse -Include *.ps1, *.psm1, *.psd1, *.cmd | Where-Object {
+          $bad = Get-ChildItem collector, Start-PCDoctor.ps1, Start-PCDoctor.cmd -Recurse -Include *.ps1, *.psm1, *.psd1, *.cmd | Where-Object {
             [System.IO.File]::ReadAllBytes($_.FullName) | Where-Object { $_ -gt 127 } | Select-Object -First 1
           }
           if ($bad) { Write-Error "Non-ASCII characters in: $($bad.Name -join ', ')"; exit 1 }
@@ -210,6 +212,34 @@ jobs:
             if ($unread) { Write-Error "The analyzer could not read the collector's output: $($unread -join '; ')"; exit 1 }
             if (-not $result.device.cpu) { Write-Error 'No CPU in the analysis result'; exit 1 }
           }
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Start-PCDoctor.ps1 starts the master app without Docker
+        shell: powershell
+        run: ./Start-PCDoctor.ps1 -Mode Python -Check -Port 8091
+
+      - name: The running app serves the dashboard and the collector download
+        shell: pwsh
+        run: |
+          $server = Start-Process -FilePath .venv/Scripts/python.exe -ArgumentList '-m', 'pcdoctor_api', '--port', '8092' -PassThru -NoNewWindow
+          try {
+            $ok = $false
+            foreach ($i in 1..30) { try { if ((Invoke-RestMethod http://localhost:8092/api/health).status -eq 'ok') { $ok = $true; break } } catch { Start-Sleep 1 } }
+            if (-not $ok) { throw 'the app did not start' }
+            if ((Invoke-WebRequest http://localhost:8092/get).Content -notmatch '<title>PC Doctor</title>') { throw 'dashboard not served' }
+            Invoke-WebRequest http://localhost:8092/api/collector.zip -OutFile "$env:RUNNER_TEMP/collector.zip"
+            Expand-Archive "$env:RUNNER_TEMP/collector.zip" "$env:RUNNER_TEMP/usb"
+            # Run the downloaded copy exactly as it would run from a USB stick.
+            $env:PCDOCTOR_NO_ELEVATE = '1'
+            cmd /c "`"$env:RUNNER_TEMP\usb\PCDoctor-collector\PCDoctor.cmd`" -Mode Quick -NonInteractive -UploadUrl http://localhost:8092 < nul"
+            $runs = Invoke-RestMethod http://localhost:8092/api/runs
+            if ($runs.total -ne 1) { throw "expected 1 uploaded run, found $($runs.total)" }
+            Write-Host "Uploaded from the 'USB' copy: $($runs.items[0].headline)"
+            if (-not (Get-ChildItem "$env:RUNNER_TEMP/usb/PCDoctor-collector/runs/*.zip")) { throw 'no zip saved next to the collector' }
+          } finally { Stop-Process -Id $server.Id -Force }
 
       - uses: actions/upload-artifact@v4
         if: always()

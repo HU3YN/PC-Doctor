@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, NavLink, Route, Routes } from "react-router-dom";
 
 import { api } from "./api";
+import { DeadPcPage } from "./pages/DeadPcPage";
+import { GetCollectorPage } from "./pages/GetCollectorPage";
 import { LookupPage } from "./pages/LookupPage";
 import { RunPage } from "./pages/RunPage";
 import { RunsPage } from "./pages/RunsPage";
@@ -63,6 +65,8 @@ export function App() {
             </NavLink>
             <NavLink to="/worklog">Work log</NavLink>
             <NavLink to="/lookup">Look up</NavLink>
+            <NavLink to="/wont-start">Won't start</NavLink>
+            <NavLink to="/get">Get collector</NavLink>
           </nav>
           <Link to="/worklog/new" className="btn primary">
             + Log a job
@@ -78,6 +82,8 @@ export function App() {
           <Route path="/worklog/:id" element={<WorkLogEntryPage />} />
           <Route path="/worklog/:id/edit" element={<WorkLogFormPage />} />
           <Route path="/lookup" element={<LookupPage />} />
+          <Route path="/wont-start" element={<DeadPcPage />} />
+          <Route path="/get" element={<GetCollectorPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

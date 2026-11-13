@@ -6,7 +6,7 @@ import { api, type StopCode } from "../api";
 import { ErrorNotice, SimilarCases } from "../components/Bits";
 import { useDebounced } from "../useDebounced";
 
-function StopCodeCard({ code, categories }: { code: StopCode; categories: Record<string, string> }) {
+export function StopCodeCard({ code, categories }: { code: StopCode; categories: Record<string, string> }) {
   return (
     <div className="card">
       <div className="row">

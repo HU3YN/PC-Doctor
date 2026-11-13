@@ -121,7 +121,15 @@ export function WorkLogFormPage() {
   });
   const run = useQuery({ queryKey: ["run", runId], queryFn: () => api.run(runId!), enabled: Boolean(runId) });
 
-  const [form, setForm] = useState<FormState>(EMPTY);
+  // Other pages can start an entry: /worklog/new?title=...&codes=...&category=...
+  const [form, setForm] = useState<FormState>(() => ({
+    ...EMPTY,
+    title: params.get("title") ?? "",
+    error_codes: params.get("codes") ?? "",
+    category: params.get("category") ?? EMPTY.category,
+    symptoms: params.get("symptoms") ?? "",
+    components: params.get("parts") ?? "",
+  }));
   const [loaded, setLoaded] = useState(entryId === null && !runId);
   useEffect(() => {
     if (loaded) return;

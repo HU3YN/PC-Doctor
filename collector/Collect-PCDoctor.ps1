@@ -364,7 +364,8 @@ if ($UploadUrl -and $zipPath) {
         Write-Host '  The zip is still on disk - drop it on the dashboard instead.'
     }
 } elseif ($zipPath) {
-    Write-Host '  Next: open the PC Doctor dashboard and drop the zip file on it.'
+    Write-Host '  Next: take this zip to the master PC and drop it on the Runs page of the dashboard.'
+    Write-Host '  (If the collector is on a USB stick, the zip is already on the stick.)'
 }
 Write-Host ''
 if ($uploadFailed) { exit 2 }

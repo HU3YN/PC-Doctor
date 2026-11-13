@@ -179,6 +179,31 @@ export interface Stats {
   fault_types_detectable: number;
 }
 
+export interface NoBootSymptom {
+  key: string;
+  title: string;
+  meaning: string;
+  category: string;
+  causes: string[];
+  checks: string[];
+}
+
+export interface PhotoReading {
+  text: string;
+  is_blue_screen: boolean;
+  stop_codes: StopCode[];
+  unknown_codes: string[];
+  drivers: string[];
+  cases: SimilarCase[];
+}
+
+export interface CollectorInfo {
+  available: boolean;
+  includes_presentmon: boolean;
+  lan_addresses: string[];
+  photo_reading: boolean;
+}
+
 /** An error whose message is safe and useful to show to the user. */
 export class ApiError extends Error {
   constructor(
@@ -280,6 +305,14 @@ export const api = {
 
   stopCodes: (q: string) => request<StopCode[]>(`/api/stopcodes${query({ q, limit: 12 })}`),
   stopCode: (code: string) => request<StopCode>(`/api/stopcodes/${encodeURIComponent(code)}`),
+
+  collector: () => request<CollectorInfo>("/api/collector"),
+  noBoot: () => request<NoBootSymptom[]>("/api/noboot"),
+  readPhoto: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<PhotoReading>("/api/photos", { method: "POST", body: form });
+  },
 
   loadDemo: () => request<{ runs: number; work_log: number }>("/api/demo", { method: "POST" }),
   clearDemo: () => request<{ runs: number; work_log: number }>("/api/demo", { method: "DELETE" }),
