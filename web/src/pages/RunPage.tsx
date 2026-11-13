@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { api, type Check, type Finding, type RunDetail } from "../api";
+import { api, type Check, type Finding, type RunDetail, type Troubleshooting } from "../api";
 import { CaseCard, Chips, ErrorNotice, Icon, Loading, SeverityBadge, SimilarCases } from "../components/Bits";
 import { RunCharts } from "../components/Charts";
 import { formatDateTime, formatDuration, formatEvidence, formatNumber, humanizeKey } from "../format";
@@ -141,6 +141,78 @@ function SensorTable({ run }: { run: RunDetail }) {
 
 /** The diagnosis of one run. With `shared`, it is a guest's private link:
  *  the same diagnosis, without the master's tools or work log. */
+function List({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <strong>{title}</strong>
+      <ol style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+// The AI troubleshooter. Shown to the master only, and only when a key is set.
+function Troubleshooter({ runId, categories }: { runId: string; categories: Record<string, string> }) {
+  const [question, setQuestion] = useState("");
+  const assist = useQuery({ queryKey: ["assist"], queryFn: api.assist, staleTime: Infinity });
+  const ask = useMutation<Troubleshooting, Error>({ mutationFn: () => api.troubleshoot(runId, question) });
+  if (!assist.data?.available) return null;
+  const answer = ask.data;
+  return (
+    <section className="card stack" style={{ gap: 10 }}>
+      <div className="section-title">
+        <h2>Ask the troubleshooter</h2>
+      </div>
+      <p className="muted small">
+        Sends this run's findings, and your matching earlier jobs, to the AI provider. It suggests the most likely
+        cause and how to confirm it. Treat it as a second opinion to check, not a verdict.
+      </p>
+      <div className="row" style={{ gap: 8 }}>
+        <input
+          className="grow"
+          value={question}
+          maxLength={2000}
+          placeholder="Optional: what do you want to know? (e.g. could this be the PSU?)"
+          onChange={(event) => setQuestion(event.target.value)}
+        />
+        <button className="btn" disabled={ask.isPending} onClick={() => ask.mutate()}>
+          {ask.isPending ? "Thinking ..." : "Find the likely cause"}
+        </button>
+      </div>
+      <ErrorNotice error={ask.error} />
+      {answer && (
+        <div className="stack" style={{ gap: 10 }}>
+          <div>
+            <strong>{answer.likely_cause || "No clear cause."}</strong>
+            <div className="muted small">
+              {categories[answer.category] ?? answer.category} - confidence: {answer.confidence}
+            </div>
+          </div>
+          {answer.because.length > 0 && (
+            <div>
+              <strong>Based on</strong>
+              <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                {answer.because.map((reason) => (
+                  <li key={reason.finding + reason.why}>
+                    <code>{reason.finding}</code>: {reason.why}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <List title="Check next, in order" items={answer.steps} />
+          <List title="Also rule out" items={answer.rule_out} />
+          <List title="Data that would help" items={answer.missing} />
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function RunPage({ shared = false }: { shared?: boolean }) {
   const { id = "", key = "" } = useParams();
   const navigate = useNavigate();
@@ -313,6 +385,8 @@ export function RunPage({ shared = false }: { shared?: boolean }) {
           ))}
         </section>
       )}
+
+      {!shared && <Troubleshooter runId={data.id} categories={categories} />}
 
       {(data.similar_cases.length > 0 || data.work_log.length > 0) && (
         <section className="stack" style={{ gap: 12 }}>

@@ -130,13 +130,20 @@ def _ask(settings: Settings, content: Any, shape: str) -> dict[str, Any]:
     try:
         reply = client.messages.create(
             model=settings.ai_model,
-            max_tokens=1200,
+            # Room for the model's own reasoning as well as the short answer.
+            max_tokens=8000,
+            output_config={"effort": "low"},
             system=f"{RULES}\n\n{shape}",
             messages=[{"role": "user", "content": content}],
         )
     except Exception as error:  # noqa: BLE001 - any SDK failure becomes one clear message
         raise AiError(f"The AI helper could not be reached ({error.__class__.__name__}).") from None
-    text = "".join(getattr(block, "text", "") for block in reply.content)
+    stop = getattr(reply, "stop_reason", None)
+    if stop == "refusal":
+        raise AiError("The AI helper declined to answer this one.")
+    if stop == "max_tokens":
+        raise AiError("The AI helper's answer was cut off. Try again.")
+    text = "".join(getattr(block, "text", "") or "" for block in reply.content)
     return parse_json(text)
 
 
@@ -161,3 +168,56 @@ def describe_photo(settings: Settings, jpeg: bytes, ocr_text: str) -> dict[str, 
         },
     ]
     return clean_photo_notes(_ask(settings, content, PHOTO_SHAPE))
+
+
+# --- the troubleshooter -----------------------------------------------------
+
+TROUBLESHOOT_SHAPE = (
+    "You are given the automatic findings for one PC, each with a code in square brackets, "
+    "and sometimes the technician's own earlier jobs. Work out the single most likely root "
+    "cause and how to confirm it. "
+    'Fields: "likely_cause" (one or two sentences), "category" (one of: '
+    + ", ".join(CATEGORIES)
+    + '), "confidence" ("low", "medium" or "high"), "because" (list of objects with '
+    '"finding" - a finding code copied exactly from the material - and "why"), '
+    '"steps" (list: the checks to do, cheapest and most telling first; say what result '
+    'confirms or rules out the cause), "rule_out" (list: other causes that fit and how to '
+    'tell them apart), "missing" (list: data that was not collected and would help). '
+    "Every claim must rest on a finding in the material. If the findings do not point to a "
+    'cause, say so in "likely_cause", use confidence "low" and category "no_fault_found" or '
+    '"other". Never suggest anything that risks the hardware (no overvolting, no blocking '
+    "cooling) and never suggest changing settings without saying how to put them back."
+)
+CONFIDENCE = ("low", "medium", "high")
+
+
+def clean_troubleshoot(raw: dict[str, Any], known_codes: set[str]) -> dict[str, Any]:
+    """Keep only what can be checked. A reason must cite a finding this run
+    really has; an answer left with no such reason is marked low confidence."""
+    because = []
+    items = raw.get("because")
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        code = str(item.get("finding") or "").strip()
+        why = str(item.get("why") or "").strip()[:600]
+        if code in known_codes and why:
+            because.append({"finding": code, "why": why})
+    category = raw.get("category")
+    confidence = raw.get("confidence")
+    if confidence not in CONFIDENCE or not because:
+        confidence = "low"
+    return {
+        "likely_cause": str(raw.get("likely_cause") or "").strip()[:1500],
+        "category": category if category in CATEGORIES else "other",
+        "confidence": confidence,
+        "because": because[:8],
+        "steps": _strings(raw.get("steps"), limit=10),
+        "rule_out": _strings(raw.get("rule_out"), limit=6),
+        "missing": _strings(raw.get("missing"), limit=6),
+    }
+
+
+def troubleshoot(settings: Settings, material: str, known_codes: set[str]) -> dict[str, Any]:
+    raw = _ask(settings, material[:30000], TROUBLESHOOT_SHAPE)
+    return clean_troubleshoot(raw, known_codes)

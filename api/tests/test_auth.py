@@ -163,6 +163,7 @@ MASTER_ONLY = [
     ("delete", "/api/inbox/abc"),
     ("get", "/api/assist"),
     ("post", "/api/assist/draft"),
+    ("post", "/api/assist/troubleshoot"),
 ]
 
 
@@ -424,3 +425,39 @@ def test_ai_answer_cleaning():
     assert notes["observations"] == ["DRAM LED on"] and notes["category"] == "memory"
     with pytest.raises(ai.AiError):
         ai.parse_json("[1, 2]")
+
+
+def test_troubleshooter_may_only_cite_findings_the_run_has(client, monkeypatch):
+    import json
+    import sys
+    import types
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    get_settings.cache_clear()
+    monkeypatch.setitem(sys.modules, "anthropic", types.SimpleNamespace(Anthropic=FakeAnthropic))
+    FakeAnthropic.sent.clear()
+    run_id = client.post("/api/runs", files=run_zip()).json()["run"]["id"]
+    codes = [f["code"] for f in client.get(f"/api/runs/{run_id}").json()["findings"]]
+    FakeAnthropic.reply = json.dumps(
+        {
+            "likely_cause": "The CPU is faulty.",
+            "category": "cpu",
+            "confidence": "high",
+            "because": [
+                {"finding": codes[0], "why": "fatal hardware errors"},
+                {"finding": "made.up", "why": "invented"},
+            ],
+            "steps": ["Reset the BIOS to defaults and retest."],
+        }
+    )
+    answer = client.post("/api/assist/troubleshoot", json={"run_id": run_id, "question": "PSU?"})
+    assert answer.status_code == 200, answer.text
+    body = answer.json()
+    assert [b["finding"] for b in body["because"]] == [codes[0]] and body["confidence"] == "high"
+    material = FakeAnthropic.sent[0]["messages"][0]["content"]
+    assert f"[{codes[0]}]" in material and "The technician asks: PSU?" in material
+
+    FakeAnthropic.reply = json.dumps({"likely_cause": "x", "confidence": "high", "because": []})
+    body = client.post("/api/assist/troubleshoot", json={"run_id": run_id}).json()
+    assert body["confidence"] == "low" and body["category"] == "other"
+    assert client.post("/api/assist/troubleshoot", json={"run_id": "nope"}).status_code == 404

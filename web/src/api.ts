@@ -15,6 +15,16 @@ export interface Finding {
   error_codes: string[];
 }
 
+export interface Troubleshooting {
+  likely_cause: string;
+  category: string;
+  confidence: "low" | "medium" | "high";
+  because: { finding: string; why: string }[];
+  steps: string[];
+  rule_out: string[];
+  missing: string[];
+}
+
 export interface RunSummary {
   id: string;
   created_at: string;
@@ -380,6 +390,9 @@ export const api = {
   assist: () => request<{ available: boolean; model: string }>("/api/assist"),
   draft: (body: { run_id?: string | null; photo_id?: string | null; notes?: string }) =>
     request<Draft>("/api/assist/draft", json("POST", body)),
+
+  troubleshoot: (runId: string, question: string) =>
+    request<Troubleshooting>("/api/assist/troubleshoot", json("POST", { run_id: runId, question })),
 
   collector: () => request<CollectorInfo>("/api/collector"),
   noBoot: () => request<NoBootSymptom[]>("/api/noboot"),
