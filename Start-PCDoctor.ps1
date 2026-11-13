@@ -65,8 +65,10 @@ function Find-Python {
         if (-not (Get-Command $candidate[0] -ErrorAction SilentlyContinue)) { continue }
         $arguments = @()
         if ($candidate.Count -gt 1) { $arguments = @($candidate[1..($candidate.Count - 1)]) }
-        $version = & $candidate[0] @arguments -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>$null
-        if ($LASTEXITCODE -eq 0 -and $version -match '^(\d+)\.(\d+)$') {
+        # "--version" needs no quoting: Windows PowerShell strips double quotes
+        # from arguments passed to programs, which breaks "python -c" snippets.
+        $version = (& $candidate[0] @arguments --version 2>$null | Out-String)
+        if ($LASTEXITCODE -eq 0 -and $version -match 'Python (\d+)\.(\d+)') {
             if ([int]$Matches[1] -eq 3 -and [int]$Matches[2] -ge 11) { return , @($candidate) }
         }
     }
