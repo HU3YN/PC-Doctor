@@ -356,7 +356,15 @@ if ($UploadUrl -and $zipPath) {
     Write-Host "  Uploading to $UploadUrl ..."
     try {
         $answer = Send-PCDoctorRun -ZipPath $zipPath -Url $UploadUrl -Label $Label
-        Write-Host ('  Uploaded. Diagnosis: {0}/runs/{1}' -f $UploadUrl.TrimEnd('/'), $answer.run.id) -ForegroundColor Green
+        # A guest upload comes back with the key of a private link to this one run.
+        if ($answer.share_key) {
+            $link = '{0}/r/{1}' -f $UploadUrl.TrimEnd('/'), $answer.share_key
+            Write-Host "  Uploaded. Your private diagnosis link:" -ForegroundColor Green
+            Write-Host "  $link" -ForegroundColor Green
+            if ([Environment]::UserInteractive -and -not $NonInteractive) { Start-Process $link }
+        } else {
+            Write-Host ('  Uploaded. Diagnosis: {0}/runs/{1}' -f $UploadUrl.TrimEnd('/'), $answer.run.id) -ForegroundColor Green
+        }
         Write-Host ('  {0}: {1}' -f ([string]$answer.run.verdict).ToUpperInvariant(), $answer.run.headline)
     } catch {
         $uploadFailed = $true

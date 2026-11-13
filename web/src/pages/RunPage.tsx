@@ -139,14 +139,23 @@ function SensorTable({ run }: { run: RunDetail }) {
   );
 }
 
-export function RunPage() {
-  const { id = "" } = useParams();
+/** The diagnosis of one run. With `shared`, it is a guest's private link:
+ *  the same diagnosis, without the master's tools or work log. */
+export function RunPage({ shared = false }: { shared?: boolean }) {
+  const { id = "", key = "" } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
-  const run = useQuery({ queryKey: ["run", id], queryFn: () => api.run(id) });
+  const run = useQuery({
+    queryKey: shared ? ["shared", key] : ["run", id],
+    queryFn: () => (shared ? api.sharedRun(key) : api.run(id)),
+  });
   const meta = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: Infinity });
   const hasCharts = Boolean(run.data?.has_frames || run.data?.has_sensors);
-  const series = useQuery({ queryKey: ["series", id], queryFn: () => api.series(id), enabled: hasCharts });
+  const series = useQuery({
+    queryKey: shared ? ["shared-series", key] : ["series", id],
+    queryFn: () => (shared ? api.sharedSeries(key) : api.series(id)),
+    enabled: hasCharts,
+  });
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState("");
 
@@ -190,10 +199,14 @@ export function RunPage() {
     <div className="stack">
       <div className="page-head">
         <div>
-          <Link to="/" className="small">
-            &larr; All runs
-          </Link>
-          {editing ? (
+          {!shared && (
+            <Link to="/" className="small">
+              &larr; All runs
+            </Link>
+          )}
+          {shared ? (
+            <h1>Your PC&apos;s diagnosis</h1>
+          ) : editing ? (
             <form
               className="row"
               style={{ marginTop: 6 }}
@@ -239,7 +252,7 @@ export function RunPage() {
             {data.is_demo ? " · demo data" : ""}
           </p>
         </div>
-        <div className="row">
+        <div className="row" hidden={shared}>
           <Link className="btn primary" to={`/worklog/new?run=${data.id}`}>
             Log this job
           </Link>
@@ -270,7 +283,16 @@ export function RunPage() {
         </div>
       </div>
 
-      {data.rules_outdated && (
+      {shared && (
+        <div className="notice">
+          <span>
+            This page is private to this link - bookmark it or copy the address to come back.
+            Nobody else&apos;s results are visible from here.
+          </span>
+        </div>
+      )}
+
+      {data.rules_outdated && !shared && (
         <div className="notice warn">
           <span className="grow">This run was analysed with older rules. Analyse it again to apply the current ones.</span>
           <button className="btn" onClick={() => reanalyze.mutate()} disabled={reanalyze.isPending}>

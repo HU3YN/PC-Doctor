@@ -61,9 +61,11 @@ export function LookupPage() {
     queryFn: () => api.stopCodes(q),
     placeholderData: (previous) => previous,
   });
+  const auth = useQuery({ queryKey: ["auth"], queryFn: api.authStatus });
+  const master = Boolean(auth.data?.signed_in);
   const cases = useQuery({
     queryKey: ["lookup-cases", q],
-    enabled: q.length >= 3,
+    enabled: master && q.length >= 3,
     queryFn: () => api.similar({ text: q, codes: /^(0x)?[0-9a-f]{2,8}$/i.test(q) ? [q.startsWith("0") ? q : `0x${q}`] : [], limit: 6 }),
     placeholderData: (previous) => previous,
   });
@@ -93,7 +95,7 @@ export function LookupPage() {
       />
       <ErrorNotice error={codes.error ?? cases.error} />
 
-      {q.length >= 3 && (
+      {master && q.length >= 3 && (
         <section className="stack" style={{ gap: 10 }}>
           <h2>From your work log</h2>
           <SimilarCases cases={cases.data ?? []} empty="Nothing in your work log matches yet." />

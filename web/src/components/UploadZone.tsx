@@ -23,7 +23,8 @@ export function UploadZone() {
       void client.invalidateQueries({ queryKey: ["runs"] });
       void client.invalidateQueries({ queryKey: ["stats"] });
       const only = results.length === 1 ? results[0] : undefined;
-      if (only) navigate(`/runs/${only.run.id}`);
+      // A guest gets a private link to their one run; the master opens it by id.
+      if (only) navigate(only.share_key ? `/r/${only.share_key}` : `/runs/${only.run.id}`);
     },
   });
 

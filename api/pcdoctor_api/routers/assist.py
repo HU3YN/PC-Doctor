@@ -38,15 +38,13 @@ def material_for(db: Session, request: DraftRequest) -> str:
         run = db.get(Run, request.run_id, options=[selectinload(Run.findings)])
         if run is None:
             raise HTTPException(status_code=404, detail="Run not found.")
-        parts.append(
-            f"PC: {run.cpu or 'unknown CPU'}, {run.gpu or 'unknown GPU'}, {run.ram_gb or '?'} GB RAM"
-        )
+        cpu, gpu = run.cpu or "unknown CPU", run.gpu or "unknown GPU"
+        parts.append(f"PC: {cpu}, {gpu}, {run.ram_gb or '?'} GB RAM")
         parts.append("Automatic diagnosis findings:")
         for finding in run.findings:
             codes = f" [{', '.join(finding.error_codes)}]" if finding.error_codes else ""
-            parts.append(
-                f"- ({finding.severity}, {finding.category}) {finding.title}{codes}: {finding.summary}"
-            )
+            head = f"- ({finding.severity}, {finding.category}) {finding.title}{codes}"
+            parts.append(f"{head}: {finding.summary}")
     if request.photo_id:
         photo = db.get(Photo, request.photo_id)
         if photo is None:

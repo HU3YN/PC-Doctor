@@ -32,6 +32,9 @@ services:
       PCDOCTOR_DATABASE_URL: postgresql://pcdoctor:${POSTGRES_PASSWORD:-pcdoctor}@db:5432/pcdoctor
       PCDOCTOR_DATA_DIR: /data
       PCDOCTOR_MAX_UPLOAD_MB: ${PCDOCTOR_MAX_UPLOAD_MB:-200}
+      PCDOCTOR_TRUST_PROXY: "true"   # nginx in front sets X-Forwarded-For
+      # Optional AI helper. Leave unset to keep it off.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - rundata:/data
     depends_on:

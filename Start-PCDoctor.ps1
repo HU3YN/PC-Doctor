@@ -173,6 +173,22 @@ if ($Lan) {
     Write-Host '  Only this computer can open it. Start with -Lan to let other PCs on your network in.'
 }
 
+# First start: the code needed to create the master account.
+$setupCode = $null
+try {
+    if ((Invoke-RestMethod -Uri "$url/api/auth/status" -TimeoutSec 5).setup_needed) {
+        if ($Mode -eq 'Docker') { $setupCode = (& docker compose exec -T api cat /data/setup-code.txt 2>$null | Out-String).Trim() }
+        else {
+            $codeFile = Join-Path $root 'data\setup-code.txt'
+            if (Test-Path -LiteralPath $codeFile) { $setupCode = (Get-Content -LiteralPath $codeFile -Raw).Trim() }
+        }
+    }
+} catch { }
+if ($setupCode) {
+    Write-Host ''
+    Write-Host "  First start - create your master account in the browser. Setup code:  $setupCode" -ForegroundColor Cyan
+}
+
 if ($Check) {
     Write-Info 'Check passed.'
     if ($server) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }

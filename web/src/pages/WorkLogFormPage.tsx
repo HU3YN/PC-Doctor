@@ -165,8 +165,36 @@ export function WorkLogFormPage() {
     placeholderData: (previous) => previous,
   });
 
+  const photoId = entryId === null ? params.get("photo") : null;
+  const assist = useQuery({ queryKey: ["assist"], queryFn: api.assist, staleTime: Infinity });
+  const draft = useMutation({
+    mutationFn: () =>
+      api.draft({
+        run_id: form.run_id,
+        photo_id: photoId,
+        notes: [form.title, form.symptoms, form.steps, form.root_cause, form.fix].filter(Boolean).join("\n"),
+      }),
+    // The draft only fills what is still empty: nothing you typed is replaced.
+    onSuccess: (suggested) =>
+      setForm((current) => ({
+        ...current,
+        title: current.title || suggested.title,
+        category: current.category === "other" ? suggested.category : current.category,
+        symptoms: current.symptoms || suggested.symptoms,
+        steps: current.steps || suggested.steps,
+        root_cause: current.root_cause || suggested.root_cause,
+        fix: current.fix || suggested.fix,
+        error_codes: current.error_codes || suggested.error_codes.join(", "),
+        components: current.components || suggested.components.join(", "),
+      })),
+  });
+
   const save = useMutation({
-    mutationFn: () => (entryId === null ? api.createEntry(toInput(form)) : api.updateEntry(entryId, toInput(form))),
+    mutationFn: async () => {
+      const saved = await (entryId === null ? api.createEntry(toInput(form)) : api.updateEntry(entryId, toInput(form)));
+      if (photoId) await api.linkPhoto(photoId, saved.id);
+      return saved;
+    },
     onSuccess: (saved) => {
       void client.invalidateQueries();
       navigate(`/worklog/${saved.id}`);
@@ -303,15 +331,26 @@ export function WorkLogFormPage() {
             </label>
           </div>
 
-          <ErrorNotice error={save.error} />
+          <ErrorNotice error={save.error ?? draft.error} />
           <div className="row">
             <button className="btn primary" disabled={save.isPending}>
               {save.isPending ? "Saving ..." : "Save"}
             </button>
+            {assist.data?.available && (
+              <button type="button" className="btn" disabled={draft.isPending} onClick={() => draft.mutate()}>
+                {draft.isPending ? "Drafting ..." : "Draft the rest with AI"}
+              </button>
+            )}
             <Link className="btn" to={back}>
               Cancel
             </Link>
           </div>
+          {assist.data?.available && (
+            <p className="muted small">
+              The AI fills only empty fields, from the run or photo and what you typed. It sends
+              that text to the AI provider. Read the draft before saving - it can be wrong.
+            </p>
+          )}
         </form>
 
         <aside className="stack" style={{ gap: 10 }}>

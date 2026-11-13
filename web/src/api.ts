@@ -204,6 +204,46 @@ export interface CollectorInfo {
   photo_reading: boolean;
 }
 
+export interface AuthStatus {
+  setup_needed: boolean;
+  signed_in: boolean;
+  username: string | null;
+}
+
+export interface PhotoNotes {
+  summary: string;
+  observations: string[];
+  error_codes: string[];
+  category: string;
+  next_checks: string[];
+  uncertain: string[];
+}
+
+export interface InboxPhoto {
+  id: string;
+  created_at: string;
+  label: string;
+  text: string;
+  stop_codes: StopCode[];
+  unknown_codes: string[];
+  drivers: string[];
+  is_blue_screen: boolean;
+  ai: PhotoNotes | null;
+  work_log_id: number | null;
+  cases: SimilarCase[];
+}
+
+export interface Draft {
+  title: string;
+  category: string;
+  symptoms: string;
+  steps: string;
+  root_cause: string;
+  fix: string;
+  error_codes: string[];
+  components: string[];
+}
+
 /** An error whose message is safe and useful to show to the user. */
 export class ApiError extends Error {
   constructor(
@@ -275,7 +315,7 @@ export const api = {
   uploadRun: (file: File) => {
     const form = new FormData();
     form.append("file", file);
-    return request<{ run: RunSummary; duplicate: boolean }>("/api/runs", {
+    return request<{ run: RunSummary; duplicate: boolean; share_key: string | null }>("/api/runs", {
       method: "POST",
       body: form,
     });
@@ -305,6 +345,41 @@ export const api = {
 
   stopCodes: (q: string) => request<StopCode[]>(`/api/stopcodes${query({ q, limit: 12 })}`),
   stopCode: (code: string) => request<StopCode>(`/api/stopcodes/${encodeURIComponent(code)}`),
+
+  authStatus: () => request<AuthStatus>("/api/auth/status"),
+  setup: (body: { username: string; password: string; setup_code: string }) =>
+    request<AuthStatus>("/api/auth/setup", json("POST", body)),
+  login: (body: { username: string; password: string }) =>
+    request<AuthStatus>("/api/auth/login", json("POST", body)),
+  logout: () => request<AuthStatus>("/api/auth/logout", { method: "POST" }),
+
+  sharedRun: (key: string) => request<RunDetail>(`/api/shared/${encodeURIComponent(key)}`),
+  sharedSeries: (key: string) => request<Series>(`/api/shared/${encodeURIComponent(key)}/series`),
+
+  createPhotoLink: (label: string) =>
+    request<{ token: string; path: string; label: string; expires_at: string }>(
+      "/api/photo-links",
+      json("POST", { label }),
+    ),
+  photoLink: (token: string) =>
+    request<{ label: string; expires_at: string }>(`/api/photo-links/${encodeURIComponent(token)}`),
+  sendPhoto: (token: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ received: boolean }>(`/api/photo-links/${encodeURIComponent(token)}/photos`, {
+      method: "POST",
+      body: form,
+    });
+  },
+  inbox: () => request<{ items: InboxPhoto[]; waiting: number }>("/api/inbox"),
+  describePhoto: (id: string) => request<InboxPhoto>(`/api/inbox/${id}/describe`, { method: "POST" }),
+  linkPhoto: (id: string, workLogId: number | null) =>
+    request<InboxPhoto>(`/api/inbox/${id}`, json("PATCH", { work_log_id: workLogId })),
+  deletePhoto: (id: string) => request<void>(`/api/inbox/${id}`, { method: "DELETE" }),
+
+  assist: () => request<{ available: boolean; model: string }>("/api/assist"),
+  draft: (body: { run_id?: string | null; photo_id?: string | null; notes?: string }) =>
+    request<Draft>("/api/assist/draft", json("POST", body)),
 
   collector: () => request<CollectorInfo>("/api/collector"),
   noBoot: () => request<NoBootSymptom[]>("/api/noboot"),

@@ -15,7 +15,7 @@ COPY workers/pyproject.toml workers/README.md workers/
 COPY workers/pcdoctor_analysis workers/pcdoctor_analysis
 COPY api/pyproject.toml api/README.md api/
 COPY api/pcdoctor_api api/pcdoctor_api
-RUN pip install ./workers "./api[photo]"
+RUN pip install ./workers "./api[photo,ai]"
 
 # The Windows collector, offered for download from the dashboard.
 COPY collector/PCDoctor.cmd collector/Collect-PCDoctor.ps1 collector/PCDoctorCollector.psm1 \

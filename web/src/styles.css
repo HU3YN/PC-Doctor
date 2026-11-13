@@ -737,3 +737,49 @@ kbd {
   padding: 0 5px;
   font-size: 0.88em;
 }
+
+/* -------------------------------------------------- sign-in, inbox, phone */
+
+[hidden] {
+  display: none !important;
+}
+.narrow {
+  max-width: 440px;
+  margin: 40px auto 0;
+}
+.photo-card {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .photo-card {
+    grid-template-columns: 1fr;
+  }
+}
+.photo-card img {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  display: block;
+}
+.qr {
+  background: #ffffff;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  width: 232px;
+  height: 232px;
+}
+.snap {
+  max-width: 480px;
+  margin: 0 auto;
+  text-align: center;
+}
+.snap .btn {
+  font-size: 1.25rem;
+  padding: 22px 20px;
+  width: 100%;
+  justify-content: center;
+}

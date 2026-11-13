@@ -70,7 +70,7 @@ function PhotoResult({ reading, categories }: { reading: PhotoReading; categorie
   );
 }
 
-function SymptomCard({ symptom, categories }: { symptom: NoBootSymptom; categories: Record<string, string> }) {
+function SymptomCard({ symptom, categories, guest }: { symptom: NoBootSymptom; categories: Record<string, string>; guest: boolean }) {
   return (
     <div className="card">
       <div className="row">
@@ -96,7 +96,7 @@ function SymptomCard({ symptom, categories }: { symptom: NoBootSymptom; categori
           </ol>
         </div>
       </div>
-      <p style={{ marginTop: 12 }}>
+      <p style={{ marginTop: 12 }} hidden={guest}>
         <Link className="btn" to={logLink({ title: symptom.title, category: symptom.category })}>
           Log this job
         </Link>
@@ -105,11 +105,12 @@ function SymptomCard({ symptom, categories }: { symptom: NoBootSymptom; categori
   );
 }
 
-export function DeadPcPage() {
+/** `guest`: the checklist only. Photos are the master's business (QR inbox). */
+export function DeadPcPage({ guest = false }: { guest?: boolean }) {
   const input = useRef<HTMLInputElement>(null);
   const [picked, setPicked] = useState("");
   const meta = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: Infinity });
-  const info = useQuery({ queryKey: ["collector"], queryFn: api.collector });
+  const info = useQuery({ queryKey: ["collector"], queryFn: api.collector, enabled: !guest });
   const guide = useQuery({ queryKey: ["noboot"], queryFn: api.noBoot, staleTime: Infinity });
   const photo = useMutation({ mutationFn: api.readPhoto });
   const categories = meta.data?.categories ?? {};
@@ -127,8 +128,11 @@ export function DeadPcPage() {
         </div>
       </div>
 
-      <div className="card stack" style={{ gap: 10 }}>
+      <div className="card stack" style={{ gap: 10 }} hidden={guest}>
         <h2>It shows an error: take a photo</h2>
+        <p className="small">
+          From a phone, the <Link to="/inbox">photo inbox</Link> is quicker: scan a QR code and snap.
+        </p>
         <p>
           Photograph the blue screen with your phone and upload it. The stop code is read off the
           photo and looked up, along with any earlier job that had it. The photo is not stored.
@@ -180,7 +184,7 @@ export function DeadPcPage() {
           ))}
         </div>
       </div>
-      {symptom && <SymptomCard symptom={symptom} categories={categories} />}
+      {symptom && <SymptomCard symptom={symptom} categories={categories} guest={guest} />}
     </div>
   );
 }
