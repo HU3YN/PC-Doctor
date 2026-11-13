@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Folder with the built dashboard (web/dist). When it exists, the API
     # serves it, so one process is the whole app.
     web_dist: Path | None = None
+    # Folder holding the Windows collector, offered for download from the
+    # dashboard. Found automatically when running from a checkout.
+    collector_dir: Path | None = None
     # Extra origins allowed to call the API from a browser (comma separated).
     # The Vite dev server proxies /api, so this is normally empty.
     cors_origins: list[str] = []

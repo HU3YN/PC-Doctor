@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__
 from .config import Settings, get_settings
 from .db import migrate
-from .routers import reference, runs, worklog
+from .routers import intake, reference, runs, worklog
 
 
 @asynccontextmanager
@@ -67,6 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(reference.router)
     app.include_router(runs.router)
     app.include_router(worklog.router)
+    app.include_router(intake.router)
 
     dist = settings.web_dist
     if dist is None:
