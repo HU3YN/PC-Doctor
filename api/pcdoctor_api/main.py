@@ -2,19 +2,26 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 
 from . import __version__
 from .config import Settings, get_settings
-from .db import migrate
+from .db import get_db, migrate
 from .routers import assist, auth, inbox, intake, reference, runs, worklog
+from .services import auth as auth_service
+
+
+@contextmanager
+def _session() -> Iterator[Session]:
+    yield from get_db()
 
 
 @asynccontextmanager
@@ -24,6 +31,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings.photos_dir.mkdir(parents=True, exist_ok=True)
     if settings.auto_migrate:
         migrate()
+    # Until the master account exists, make sure the setup code does, and show
+    # it where only someone at the server can see it.
+    try:
+        with _session() as session:
+            if not auth_service.master_exists(session):
+                code = auth_service.setup_code(settings.data_dir)
+                print(f"PC Doctor: no master account yet. Setup code: {code}", flush=True)
+    except Exception as error:  # noqa: BLE001 - never block start-up over this
+        print(f"PC Doctor: could not prepare the setup code ({error})", flush=True)
     yield
 
 

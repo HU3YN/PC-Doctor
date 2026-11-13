@@ -14,7 +14,9 @@ These are test results, not accuracy claims.
 | Check | Result |
 |---|---|
 | Analysis package unit tests | 122 pass (Python 3.11 and 3.13) |
-| API tests | 65 pass on SQLite and on PostgreSQL 16 |
+| API tests | 109 pass on SQLite and on PostgreSQL 16, including access control: every API route is checked to be either master-only or deliberately public |
+| Sign-in, guest link, QR photo inbox | Driven in a real browser as three separate visitors (master, guest, phone): 24 checks pass |
+| AI helper | Tested against a stand-in for the AI service only. **Never run against the real API** (no key was available): the first real use is the test |
 | Photo reading | Reads the stop code from generated blue-screen images (clean, straight-on) and matches earlier jobs. **Not measured on real phone photos of real screens** - glare, angle and moire will lower it; measure before quoting anything |
 | Collector on real Windows (GitHub runner, Windows Server 2025) | Lint clean; unit tests pass on Windows PowerShell 5.1 and PowerShell 7; quick run and capture run complete; output contains no computer name, user name or serial number; the analyzer reads it |
 | Fault types the rules engine can detect | 29 (`pcdoctor-analyze rules`) |

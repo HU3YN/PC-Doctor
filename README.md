@@ -42,19 +42,39 @@ There is also a **Look up** page: type a stop code (`0x124`) or describe a
 problem ("restarts under load") to get what it means, where to look first, and
 your own earlier cases.
 
+## Who sees what
+
+There are two kinds of visitor.
+
+- **The master** (you, signed in) sees everything: every run, the work log,
+  the photo inbox. One account, created the first time the app starts.
+- **A guest** (anyone, no account) can check one PC: download the collector,
+  run it, and get a **private link** to that one diagnosis. A guest cannot
+  list, search or open anything else - not other runs, not the work log.
+  Their run also appears in the master's list, so the master can log the job.
+
 ## The everyday workflow
 
-One computer is the **master** - your laptop or bench PC. It holds the
-dashboard, every diagnosis and your work log. Everything else comes to it.
-
-| The PC you are checking... | What you do |
+| The PC you are checking... | What happens |
 |---|---|
-| **Starts Windows** | Run the collector on it from a USB stick. The result is saved on the stick. Back at the master, drop the zip on the **Runs** page. |
-| **Starts Windows and is on the same network** | Open the master's address in its browser, download the collector from **Get collector**, run it, and it uploads the result itself. No stick needed. |
-| **Shows an error but will not load Windows** | Photograph the screen. On **Won't start**, upload the photo: the stop code is read off it and looked up, with any earlier job that had it. |
-| **Shows nothing at all** | On **Won't start**, pick what you see (dead, debug LED on DRAM, beeps, ...) and follow the checklist. |
+| **Starts Windows and has a network** | Open the PC Doctor address in its browser, download the collector, run it. It uploads the result and opens the private diagnosis link. No sign-in. |
+| **Starts Windows, no network** | Run the collector from a USB stick. The result is saved on the stick; drop the zip on the **Runs** page later. |
+| **Will not start** | On the master, open **Photos** and show the QR code. Scan it with a phone and snap the error screen, the motherboard LEDs or the damaged part. The photo lands in the master's inbox within seconds, with any stop code already read and matched to earlier jobs. No app or sign-in on the phone. |
+| **Shows nothing at all** | **Won't start** has a checklist for each symptom (dead, debug LED on DRAM, beeps, ...). |
 
-Every route ends the same way: **Log this job**, so the next similar one is quicker.
+Every route ends the same way for the master: **Log this job**. The work log
+is the memory: next time the same stop code, part or symptom turns up, the
+earlier job and its fix are shown first.
+
+### The AI helper (optional)
+
+With an Anthropic API key set (`ANTHROPIC_API_KEY` in `.env`), two buttons
+appear for the master: **Describe with AI** on a photo (reads debug LEDs,
+code displays and visible damage that plain OCR cannot) and **Draft the rest
+with AI** on the job form. It runs only when pressed, fills only empty fields,
+is told never to invent a cause or fix, and its output is a draft to check.
+What you ask it about is sent to Anthropic. Without a key, everything else
+works unchanged.
 
 ## Run it
 
@@ -66,7 +86,11 @@ Get the code once ([Git](https://git-scm.com/download/win) needed):
 git clone https://github.com/HU3YN/PC-Doctor.git
 ```
 
-Then double-click **`Start-PCDoctor.cmd`** in that folder. It uses Docker if
+Then double-click **`Start-PCDoctor.cmd`** in that folder. The first time,
+the window shows a **setup code**: type it into the browser to create your
+master account (it proves you are at the master computer).
+
+Double-click **`Start-PCDoctor.cmd`** again any time to start it. It uses Docker if
 Docker Desktop is running and Python if it is not, sets everything up the
 first time (a few minutes), and opens the dashboard.
 
@@ -79,20 +103,27 @@ first time (a few minutes), and opens the dashboard.
 Click "Load demo data" to look around with made-up runs and notes (removed
 again with one click).
 
-### Letting other PCs reach the master
+### Letting other PCs and phones reach the master
 
-By default only the master itself can open the dashboard, because **there are
-no logins yet**. On a network you trust (home, the shop bench), start it for
-the network instead:
+By default only the master computer itself can open the app. To let other PCs
+download the collector and phones send photos, on a network you trust:
 
 ```bash
 Start-PCDoctor.cmd -Lan
 ```
 
-It prints the address other PCs should open, for example
-`http://192.168.1.20:8080`. Allow it through Windows Firewall when asked. Do
-not do this on public Wi-Fi, and do not put it on the internet until logins
-exist (Phase 4). A USB stick always works and needs none of this.
+It prints the address to open, for example `http://192.168.1.20:8080`. Allow
+it through Windows Firewall when asked. Guests on that network can check a PC
+and send photos; only you can sign in and see what is stored.
+
+### Putting it in the cloud
+
+The sign-in is what makes hosting it reasonable: run the same Docker Compose
+stack on a server, put HTTPS in front of it, and the collector and phones can
+reach it from anywhere. That is Phase 3 of the roadmap and is **not done
+yet**. Before exposing it to the internet: use HTTPS (the sign-in cookie and
+photos must not travel in the clear), set a strong `POSTGRES_PASSWORD`, create
+the master account straight away, and keep backups.
 
 ### By hand
 

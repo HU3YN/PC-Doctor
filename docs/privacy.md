@@ -61,11 +61,31 @@ collector `-UploadUrl`. The server keeps only the known files from the zip
 Open any of them in Notepad - they are plain text. The format is described in
 [run-format.md](run-format.md).
 
-## Photos of error screens
+## Who can see what
 
-A photo uploaded on the "Won't start" page is read in memory and thrown away.
-It is never written to disk or to the database; only the text and codes read
-from it are shown to you. Photograph the screen, not the room.
+Everything stored - runs, findings, the work log, photos - is visible only to
+the signed-in master. Someone without an account can upload a run and open
+that one run through a private link; the link's key is random, and only a
+hash of it is stored. They cannot list or open anything else. A test fails
+the build if any part of the API is left open by accident
+(`api/tests/test_auth.py`).
+
+The master's password is stored as a salted scrypt hash. Sign-in sessions are
+random tokens kept in an HttpOnly cookie; the database holds only their hashes.
+
+## Photos
+
+Photos sent through a QR link are **stored** on the master (they are the
+record of a PC that could not run the collector). Before storing, each photo
+is re-encoded, which removes the location, phone model and other hidden data
+cameras put in the file. Only the master can view or delete them. The link a
+phone uses can add photos for 12 hours and can read nothing.
+
+A photo uploaded directly on the "Won't start" page is read in memory and not
+stored. Either way: photograph the PC, not people or paperwork.
+
+If the optional AI helper is switched on and you press its button, that photo
+or text is sent to Anthropic's API. It is never sent automatically.
 
 ## The work log
 

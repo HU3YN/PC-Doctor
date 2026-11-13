@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "./api";
 import { ErrorNotice, Loading } from "./components/Bits";
@@ -61,7 +61,15 @@ export function App() {
     enabled: Boolean(auth.data?.signed_in),
     refetchInterval: 15000,
   });
-  const logout = useMutation({ mutationFn: api.logout, onSuccess: () => client.invalidateQueries() });
+  const navigate = useNavigate();
+  const logout = useMutation({
+    mutationFn: api.logout,
+    onSuccess: async () => {
+      client.clear(); // forget everything the master had on screen
+      navigate("/");
+      await client.invalidateQueries();
+    },
+  });
 
   // The phone page stands alone: no menu, nothing to tap by mistake.
   if (location.pathname.startsWith("/snap/")) {

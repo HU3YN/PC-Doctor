@@ -12,6 +12,8 @@ and **only finished, measured work goes on a resume**.
 | - | Work log with similar-case matching (added) | Built |
 | - | Master-PC workflow: one-click start, collector download, USB route (added) | Built |
 | 10 (part) | Photo reader: stop codes read from a photo with an off-the-shelf OCR engine, and a no-boot checklist | Built early because it is needed at the bench. The trained vision model and build comparison are still Phase 10 |
+| 4 (part) | Master sign-in, guest diagnostics by private link, QR photo inbox | Built early because the tool needs it. Username and password only: OAuth with Discord or Google, per-user accounts and the Discord bot are still Phase 4 |
+| 2 (part) | AI helper that describes photos and drafts work-log entries | Built, untested against the real API. The evaluated troubleshooter is still Phase 2 |
 | 2 | AI troubleshooter and evaluation | Harness ready (`eval/run_eval.py`); needs real labeled cases |
 | 3 | Cloud and scale | Not started |
 | 4 | Accounts, OAuth, Discord bot, real users | Not started |
@@ -50,7 +52,7 @@ review and explain, not to write them for you.
 | Load testing | 3 | Nothing yet | Phase 3: k6 against the upload service |
 | Go | 3 | Nothing yet. `api/.../services/ingest.py` is the behaviour to reproduce | Phase 3: `upload-service/` |
 | Caches and message brokers | 3 | Nothing yet. Analysis is one function call, easy to move behind a queue | Phase 3 |
-| OAuth, sign-in | 4 | Nothing yet. **Until this exists the app has no logins** | Phase 4: authorization code flow with Discord or Google |
+| OAuth, sign-in | 4 | Password sign-in for one master account: scrypt hashes, hashed session tokens, HttpOnly cookie, rate limits, a route-coverage test. This is session auth, **not OAuth** | Phase 4: add the OAuth authorization code flow with Discord or Google, and more than one user |
 | Integrations (Discord bot, webhooks) | 4 | Nothing yet | Phase 4: `bot/` |
 | Real users | 4 | `GET /api/stats` counts runs by week | Phase 4 |
 | Rust | 6 | Nothing yet. The PowerShell collector and its tests define the behaviour | Phase 6 |
