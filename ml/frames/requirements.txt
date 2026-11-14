@@ -1,0 +1,10 @@
+# Install into ml/frames/.venv (never the shared repo venv - torch is large):
+#   pip install -r ml/frames/requirements.txt -e workers
+# For a CPU-only torch (much smaller), install torch first from PyTorch's CPU index:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch
+onnx
+onnxscript
+onnxruntime
+numpy
+pytest

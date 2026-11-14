@@ -109,6 +109,33 @@ jobs:
         working-directory: sensor-node/receiver
         run: python -m pytest -q
 
+  ml:
+    name: models (CPU, synthetic data)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      # The CPU build of PyTorch: a fraction of the size of the default one.
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -r ml/frames/requirements.txt -r ml/leds/requirements.txt -e workers ruff
+      - run: ruff check ml && ruff format --check ml
+      - name: Frame-time model (ml/frames)
+        working-directory: ml/frames
+        run: python -m pytest -q
+      - name: Train, evaluate, export and benchmark once (a plumbing check, not a result)
+        working-directory: ml/frames
+        run: |
+          python train.py --series 60 --epochs 1 --out "$RUNNER_TEMP/frames"
+          python evaluate.py --out "$RUNNER_TEMP/frames"
+          python export_onnx.py --out "$RUNNER_TEMP/frames"
+          python benchmark.py --out "$RUNNER_TEMP/frames" --repeats 5
+      - name: Debug-LED reader (ml/leds)
+        working-directory: ml/leds
+        run: python -m pytest -q
+
   web:
     name: dashboard
     runs-on: ubuntu-latest

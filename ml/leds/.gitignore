@@ -1,0 +1,6 @@
+# Trained weights, model cards and eval output
+out/
+# Photos: real photos stay out of git unless the owner decides otherwise
+data/
+data-synth/
+.venv/

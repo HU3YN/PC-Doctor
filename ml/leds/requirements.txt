@@ -1,0 +1,7 @@
+# CPU torch is enough (and much smaller); install it first:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r ml/leds/requirements.txt
+torch
+numpy
+pillow
+pytest
