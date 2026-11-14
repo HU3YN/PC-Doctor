@@ -78,14 +78,19 @@ func (q *redisQueue) State(ctx context.Context, id string) (JobState, error) {
 
 // Allow counts one event against key and says whether it is within the limit.
 func (q *redisQueue) Allow(ctx context.Context, key string, limit int64, window time.Duration) (bool, error) {
-	count, err := q.client.Incr(ctx, key).Result()
+	// One MULTI/EXEC transaction: create the key with its expiry if it is
+	// new, then count. Two separate calls (INCR, then EXPIRE) could leave a
+	// key with no expiry - a permanent block - if the second never arrived.
+	var count *redis.IntCmd
+	_, err := q.client.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.SetNX(ctx, key, 0, window)
+		count = pipe.Incr(ctx, key)
+		return nil
+	})
 	if err != nil {
 		return false, err
 	}
-	if count == 1 {
-		q.client.Expire(ctx, key, window)
-	}
-	return count <= limit, nil
+	return count.Val() <= limit, nil
 }
 
 func (q *redisQueue) Depth(ctx context.Context) (int64, error) {

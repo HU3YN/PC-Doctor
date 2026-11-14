@@ -75,13 +75,34 @@ def test_worker_refuses_jobs_that_do_not_add_up(client, session):
 class FakeRedis:
     def __init__(self) -> None:
         self.values: dict[str, int | str] = {}
+        self.expiry: dict[str, int] = {}
+        self._queued: list | None = None
 
-    def set(self, key, value, ex=None):  # noqa: ANN001
-        self.values[key] = value
+    def pipeline(self, transaction=True):  # noqa: ANN001
+        self._queued = []
+        return self
+
+    def execute(self):
+        queued, self._queued = self._queued or [], None
+        return [call() for call in queued]
+
+    def set(self, key, value, ex=None, nx=False):  # noqa: ANN001
+        def run():
+            if nx and key in self.values:
+                return None
+            self.values[key] = value
+            if ex:
+                self.expiry[key] = ex
+            return True
+
+        return self._queued.append(run) if self._queued is not None else run()
 
     def incr(self, key):  # noqa: ANN001
-        self.values[key] = int(self.values.get(key, 0)) + 1
-        return self.values[key]
+        def run():
+            self.values[key] = int(self.values.get(key, 0)) + 1
+            return self.values[key]
+
+        return self._queued.append(run) if self._queued is not None else run()
 
     def expire(self, key, seconds):  # noqa: ANN001
         pass
@@ -108,12 +129,14 @@ def test_metrics_need_the_token_and_do_not_exist_without_one(client, guest, monk
 
 def test_rate_limits_can_be_shared_through_redis(client, monkeypatch):
     limiter = auth.RateLimiter("test", limit=2, window=60)
-    limiter._redis = FakeRedis()
+    limiter._redis = fake = FakeRedis()
     assert [limiter.allow("1.2.3.4") for _ in range(3)] == [True, True, False]
     assert limiter.allow("5.6.7.8")
+    # Every counter got its expiry in the same transaction that created it.
+    assert fake.expiry == {"pcdoctor:limit:test:1.2.3.4": 60, "pcdoctor:limit:test:5.6.7.8": 60}
 
     class Broken:
-        def incr(self, key):  # noqa: ANN001
+        def pipeline(self, transaction=True):  # noqa: ANN001
             raise ConnectionError
 
     limiter._redis = Broken()  # Redis down: keep limiting, in memory

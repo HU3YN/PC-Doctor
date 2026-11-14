@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -138,5 +139,26 @@ func TestHealthAndMetrics(t *testing.T) {
 	s.Handler().ServeHTTP(health, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if health.Code != http.StatusServiceUnavailable {
 		t.Fatalf("health answered %d with Redis gone", health.Code)
+	}
+}
+
+// The rate-limit counter gets its expiry in the same transaction that creates
+// it, so it can never be left without one.
+func TestRateLimitCounterAlwaysExpires(t *testing.T) {
+	mini := miniredis.RunT(t)
+	queue := &redisQueue{client: redis.NewClient(&redis.Options{Addr: mini.Addr()})}
+	ctx := context.Background()
+	for i, want := range []bool{true, true, false} {
+		allowed, err := queue.Allow(ctx, "pcdoctor:limit:test", 2, time.Hour)
+		if err != nil || allowed != want {
+			t.Fatalf("call %d: allowed=%v err=%v, want %v", i+1, allowed, err, want)
+		}
+	}
+	if ttl := mini.TTL("pcdoctor:limit:test"); ttl != time.Hour {
+		t.Fatalf("the counter's expiry is %v, want 1h", ttl)
+	}
+	mini.FastForward(time.Hour + time.Second)
+	if allowed, _ := queue.Allow(ctx, "pcdoctor:limit:test", 2, time.Hour); !allowed {
+		t.Fatal("still blocked after the window")
 	}
 }

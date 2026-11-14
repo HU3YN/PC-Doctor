@@ -131,9 +131,14 @@ class RateLimiter:
         if self._redis is not None:
             try:
                 redis_key = f"pcdoctor:limit:{self.name}:{key}"
-                count = self._redis.incr(redis_key)
-                if count == 1:
-                    self._redis.expire(redis_key, int(self.window))
+                # One transaction: create the key with its expiry if it is
+                # new, then count. Two separate calls (INCR, then EXPIRE)
+                # could leave a key with no expiry - a permanent block - if
+                # the second never arrived.
+                pipe = self._redis.pipeline(transaction=True)
+                pipe.set(redis_key, 0, ex=int(self.window), nx=True)
+                pipe.incr(redis_key)
+                count = pipe.execute()[1]
                 return count <= self.limit
             except Exception:  # noqa: BLE001 - Redis down: fall back to counting here
                 pass
