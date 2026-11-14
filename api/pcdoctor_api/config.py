@@ -61,6 +61,13 @@ class Settings(BaseSettings):
     oauth_signup: bool = False
     # A Discord webhook that is told when a guest uploads a run (headline only).
     notify_webhook_url: str = ""
+    # A shared secret for the Discord bot (bot/). An upload that carries it in
+    # the X-PCDoctor-Bot-Token header is counted against a separate, higher
+    # limit, because one bot uploads for a whole server from one address. It
+    # changes nothing else: the upload is still a guest upload and the token
+    # cannot read anything. Empty = no bot limit, the bot counts as one guest.
+    bot_token: str = ""
+    bot_uploads_per_hour: int = Field(default=300, ge=1, le=100_000)
     # Extra origins allowed to call the API from a browser (comma separated).
     # The Vite dev server proxies /api, so this is normally empty.
     cors_origins: list[str] = []

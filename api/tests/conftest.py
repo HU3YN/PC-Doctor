@@ -50,6 +50,7 @@ def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
 
         auth.login_attempts.reset()
         auth.guest_uploads.reset()
+        auth.bot_uploads.reset()
         # Most tests act as the signed-in master; the "guest" fixture is everyone else.
         code = auth.setup_code(get_settings().data_dir)
         created = test_client.post("/api/auth/setup", json={**MASTER, "setup_code": code})

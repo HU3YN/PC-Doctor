@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if settings.auto_migrate:
         migrate()
     auth_service.use_shared_limits(settings.redis_url)
+    auth_service.bot_uploads.limit = settings.bot_uploads_per_hour
     # Until the master account exists, make sure the setup code does, and show
     # it where only someone at the server can see it.
     try:

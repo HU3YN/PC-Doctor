@@ -274,6 +274,37 @@ def test_guest_uploads_are_rate_limited(client, guest, monkeypatch):
     )  # the master is not limited
 
 
+def test_the_bot_token_only_raises_the_upload_limit(client, guest, monkeypatch):
+    from pcdoctor_api.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "bot_token", "a-long-bot-token")
+    monkeypatch.setattr(auth.guest_uploads, "limit", 1)
+    monkeypatch.setattr(auth.bot_uploads, "limit", 3)
+    bot = {auth.BOT_TOKEN_HEADER: "a-long-bot-token"}
+    assert guest.post("/api/runs", files=run_zip("healthy")).status_code == 201
+    assert guest.post("/api/runs", files=run_zip("bad_ram")).status_code == 429
+    # Same address, but with the bot token: its own, higher limit.
+    uploaded = guest.post("/api/runs", files=run_zip("bad_ram"), headers=bot)
+    assert uploaded.status_code == 201 and uploaded.json()["share_key"]
+    assert uploaded.json()["run"]["source"] == "guest"  # still a guest upload
+    assert guest.post("/api/runs", files=run_zip("power_loss"), headers=bot).status_code == 201
+    assert guest.post("/api/runs", files=run_zip("healthy"), headers=bot).status_code in (200, 201)
+    assert guest.post("/api/runs", files=run_zip("healthy"), headers=bot).status_code == 429
+    # A wrong token is refused, not quietly treated as a guest.
+    wrong = {auth.BOT_TOKEN_HEADER: "a-long-bot-tokem"}
+    assert guest.post("/api/runs", files=run_zip("healthy"), headers=wrong).status_code == 401
+    # The token reads nothing.
+    for path in ("/api/runs", "/api/worklog"):
+        assert guest.get(path, headers=bot).status_code == 401
+
+
+def test_a_bot_token_is_refused_when_none_is_configured(client, guest):
+    bot = {auth.BOT_TOKEN_HEADER: ""}
+    assert guest.post("/api/runs", files=run_zip(), headers=bot).status_code == 401
+    bot = {auth.BOT_TOKEN_HEADER: "anything"}
+    assert guest.post("/api/runs", files=run_zip(), headers=bot).status_code == 401
+
+
 # ------------------------------------------------------------ photo inbox
 
 

@@ -126,7 +126,7 @@ async def diagnose(
             )
             try:
                 diagnosis = await core.diagnose(
-                    bot.http_client, settings.api_url, data, kind, label
+                    bot.http_client, settings.api_url, data, kind, label, settings.api_token
                 )
             finally:
                 data.close()

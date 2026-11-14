@@ -377,6 +377,46 @@ def test_upload_flow_end_to_end():
     assert result.findings[1].first_check == "Clean the fans."
 
 
+def test_the_bot_token_goes_with_the_upload_only():
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        if request.method == "POST":
+            return httpx.Response(201, json={"run": RUN, "duplicate": False, "share_key": KEY})
+        return httpx.Response(200, json={"findings": FINDINGS})
+
+    async def go():
+        async with client_for(handler) as c:
+            return await core.diagnose(c, API, io.BytesIO(b"PK"), ".zip", api_token="bot-secret")
+
+    run(go())
+    assert seen[0].headers[core.BOT_TOKEN_HEADER] == "bot-secret"
+    assert core.BOT_TOKEN_HEADER not in seen[1].headers  # never sent to read findings
+
+
+def test_no_bot_token_header_without_a_token():
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(200, json={"run": RUN, "duplicate": True, "share_key": None})
+
+    async def go():
+        async with client_for(handler) as c:
+            return await core.diagnose(c, API, io.BytesIO(b"PK"), ".zip")
+
+    run(go())
+    assert core.BOT_TOKEN_HEADER not in seen[0].headers
+
+
+def test_the_bot_token_is_read_and_kept_out_of_repr():
+    settings = core.load_settings(BASE_ENV | {"PCDOCTOR_BOT_TOKEN": " bot-secret "})
+    assert settings.api_token == "bot-secret"
+    assert "bot-secret" not in repr(settings)
+    assert core.load_settings(BASE_ENV).api_token == ""
+
+
 def test_no_label_field_is_sent_when_there_is_no_label():
     seen = []
 

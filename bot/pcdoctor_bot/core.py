@@ -70,6 +70,9 @@ class Settings:
     public_url: str
     max_upload_bytes: int
     cooldown_seconds: float
+    # PCDOCTOR_BOT_TOKEN: lets the API count the bot's uploads against their
+    # own, higher limit. Optional. It is sent with uploads only.
+    api_token: str = field(default="", repr=False)
 
 
 def _base_url(name: str, value: str) -> str:
@@ -129,6 +132,7 @@ def load_settings(env: Mapping[str, str]) -> Settings:
         public_url=public_url,
         max_upload_bytes=int(max_mb * 1024 * 1024),
         cooldown_seconds=cooldown,
+        api_token=env.get("PCDOCTOR_BOT_TOKEN", "").strip(),
     )
 
 
@@ -323,16 +327,27 @@ def top_findings(raw: Any, limit: int = TOP_FINDINGS) -> tuple[Finding, ...]:
     return tuple(findings[:limit])
 
 
+BOT_TOKEN_HEADER = "X-PCDoctor-Bot-Token"
+
+
 async def upload_run(
-    client: httpx.AsyncClient, api_url: str, data: IO[bytes], kind: str, label: str = ""
+    client: httpx.AsyncClient,
+    api_url: str,
+    data: IO[bytes],
+    kind: str,
+    label: str = "",
+    api_token: str = "",
 ) -> dict[str, Any]:
-    """Upload a run as a guest and return the API's answer."""
+    """Upload a run as a guest and return the API's answer. With the bot token,
+    the API counts the upload against the bot's own limit (it is still a guest
+    upload: the token cannot read anything)."""
     # A fixed name is sent on purpose: the person's own file name can hold
     # personal details and the API does not need it.
     files = {"file": (f"run{kind}", data, "application/octet-stream")}
     form = {"label": label[:MAX_LABEL_LENGTH]} if label else {}
     try:
-        response = await client.post(f"{api_url}/api/runs", files=files, data=form)
+        headers = {BOT_TOKEN_HEADER: api_token} if api_token else {}
+        response = await client.post(f"{api_url}/api/runs", files=files, data=form, headers=headers)
     except httpx.HTTPError:
         raise ApiError("PC Doctor could not be reached. Try again later.") from None
     if response.status_code not in (200, 201):
@@ -360,10 +375,15 @@ async def fetch_findings(client: httpx.AsyncClient, api_url: str, share_key: str
 
 
 async def diagnose(
-    client: httpx.AsyncClient, api_url: str, data: IO[bytes], kind: str, label: str = ""
+    client: httpx.AsyncClient,
+    api_url: str,
+    data: IO[bytes],
+    kind: str,
+    label: str = "",
+    api_token: str = "",
 ) -> Diagnosis:
     """Upload a run, then read its findings."""
-    body = await upload_run(client, api_url, data, kind, label)
+    body = await upload_run(client, api_url, data, kind, label, api_token)
     run = body["run"]
     share_key = body.get("share_key")
     if not isinstance(share_key, str) or not _SHARE_KEY.fullmatch(share_key):

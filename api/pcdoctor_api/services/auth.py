@@ -152,6 +152,17 @@ class RateLimiter:
 
 login_attempts = RateLimiter("login", limit=8, window=15 * 60)
 guest_uploads = RateLimiter("uploads", limit=30, window=60 * 60)
+# The Discord bot's uploads (with a valid bot token). The limit is set from
+# PCDOCTOR_BOT_UPLOADS_PER_HOUR when the app starts.
+bot_uploads = RateLimiter("bot-uploads", limit=300, window=60 * 60)
+BOT_TOKEN_HEADER = "x-pcdoctor-bot-token"
+
+
+def is_bot_token(expected: str, given: str | None) -> bool:
+    """True when ``given`` is the configured bot token. Compared in constant time."""
+    if not expected or not given:
+        return False
+    return hmac.compare_digest(expected.encode(), given.encode())
 
 
 def use_shared_limits(redis_url: str) -> None:
@@ -164,5 +175,5 @@ def use_shared_limits(redis_url: str) -> None:
             client = redis.Redis.from_url(redis_url, socket_timeout=2)
         except ImportError:
             print("PC Doctor: PCDOCTOR_REDIS_URL is set but the redis package is missing.")
-    for limiter in (login_attempts, guest_uploads):
+    for limiter in (login_attempts, guest_uploads, bot_uploads):
         limiter._redis = client

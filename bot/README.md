@@ -51,6 +51,7 @@ Copy `.env.example` to `.env` (git ignores it) and fill it in.
 | `PCDOCTOR_PUBLIC_URL` | no | The address people open in a browser, used for the link. Defaults to `PCDOCTOR_URL`. |
 | `PCDOCTOR_MAX_UPLOAD_MB` | no | Download cap in MB. Default 200 (the API's own default). |
 | `PCDOCTOR_COOLDOWN_SECONDS` | no | Wait between uses per person. Default 60. |
+| `PCDOCTOR_BOT_TOKEN` | no | The same value as the API's `PCDOCTOR_BOT_TOKEN`. Without it the bot counts as one guest address (30 uploads an hour for the whole server); with it the API uses the bot's own limit (`PCDOCTOR_BOT_UPLOADS_PER_HOUR`, default 300). It only raises the limit: it reads nothing. Make one with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
 
 The bot does not read `.env` by itself; load it into the environment (see below).
 

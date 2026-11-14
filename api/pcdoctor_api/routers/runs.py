@@ -12,6 +12,7 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
+    Request,
     Response,
     UploadFile,
 )
@@ -122,8 +123,28 @@ def detail(db: Session, run: Run) -> RunDetail:
     )
 
 
+def _check_upload_limit(request: Request, settings: Settings, key: str) -> None:
+    """Rate-limit a guest upload. The Discord bot, which uploads for a whole
+    server from one address, may send the bot token to use its own higher
+    limit. The token only picks the limit: the upload is still a guest upload."""
+    given = request.headers.get(auth_service.BOT_TOKEN_HEADER)
+    if given is not None:
+        if not auth_service.is_bot_token(settings.bot_token, given):
+            raise HTTPException(status_code=401, detail="The bot token is not right.")
+        if not auth_service.bot_uploads.allow("bot"):
+            raise HTTPException(
+                status_code=429, detail="Too many uploads from the bot. Try again in an hour."
+            )
+        return
+    if not auth_service.guest_uploads.allow(key):
+        raise HTTPException(
+            status_code=429, detail="Too many uploads from here. Try again in an hour."
+        )
+
+
 @router.post("", response_model=RunUploaded, status_code=201)
 async def upload_run(
+    request: Request,
     response: Response,
     background: BackgroundTasks,
     db: Db,
@@ -140,10 +161,8 @@ async def upload_run(
     # Only the master's own uploads are "master" runs. Everyone else - no
     # account, or a member account - is limited and gets a private key.
     guest = account is None or account.role != "master"
-    if guest and not auth_service.guest_uploads.allow(key):
-        raise HTTPException(
-            status_code=429, detail="Too many uploads from here. Try again in an hour."
-        )
+    if guest:
+        _check_upload_limit(request, settings, key)
     data = await read_limited(file, settings.max_upload_mb * 1024 * 1024)
     try:
         result = ingest_service.ingest(

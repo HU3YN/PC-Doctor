@@ -35,6 +35,19 @@ services:
       PCDOCTOR_TRUST_PROXY: "true"   # nginx in front sets X-Forwarded-For
       # Optional AI helper. Leave unset to keep it off.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Optional sign-in with Discord or Google (docs/oauth.md). PUBLIC_URL is
+      # the address people use in the browser; OAuth needs it to come back.
+      PCDOCTOR_PUBLIC_URL: ${PCDOCTOR_PUBLIC_URL:-}
+      PCDOCTOR_DISCORD_CLIENT_ID: ${PCDOCTOR_DISCORD_CLIENT_ID:-}
+      PCDOCTOR_DISCORD_CLIENT_SECRET: ${PCDOCTOR_DISCORD_CLIENT_SECRET:-}
+      PCDOCTOR_GOOGLE_CLIENT_ID: ${PCDOCTOR_GOOGLE_CLIENT_ID:-}
+      PCDOCTOR_GOOGLE_CLIENT_SECRET: ${PCDOCTOR_GOOGLE_CLIENT_SECRET:-}
+      PCDOCTOR_OAUTH_SIGNUP: ${PCDOCTOR_OAUTH_SIGNUP:-false}
+      # Optional Discord webhook told about new guest runs (headline only).
+      PCDOCTOR_NOTIFY_WEBHOOK_URL: ${PCDOCTOR_NOTIFY_WEBHOOK_URL:-}
+      # Optional: the Discord bot's own upload limit (bot/README.md).
+      PCDOCTOR_BOT_TOKEN: ${PCDOCTOR_BOT_TOKEN:-}
+      PCDOCTOR_BOT_UPLOADS_PER_HOUR: ${PCDOCTOR_BOT_UPLOADS_PER_HOUR:-300}
     volumes:
       - rundata:/data
     depends_on:
@@ -47,8 +60,9 @@ services:
       context: .
       dockerfile: web/Dockerfile
     ports:
-      # 127.0.0.1 = reachable from this computer only. There are no logins
-      # yet, so set PCDOCTOR_BIND=0.0.0.0 only on a network you trust.
+      # 127.0.0.1 = reachable from this computer only. Stored runs need a
+      # sign-in, but this serves plain HTTP: set PCDOCTOR_BIND=0.0.0.0 only on
+      # a network you trust, and never expose it to the internet without HTTPS.
       - "${PCDOCTOR_BIND:-127.0.0.1}:${PCDOCTOR_PORT:-8080}:80"
     depends_on:
       api:

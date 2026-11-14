@@ -73,6 +73,41 @@ the build if any part of the API is left open by accident
 The master's password is stored as a salted scrypt hash. Sign-in sessions are
 random tokens kept in an HttpOnly cookie; the database holds only their hashes.
 
+## Signing in with Discord or Google
+
+This is optional and off until the master sets it up ([oauth.md](oauth.md)).
+
+- **What is asked for.** The smallest scope each provider has: `identify` on
+  Discord, `openid` on Google. No email, no friends list, no servers.
+- **What is stored.** The provider's name and its id for the person (Discord's
+  user id, Google's `sub`) - nothing else: no name, email or picture
+  (`Identity` in `api/pcdoctor_api/models.py`). The account gets a made-up
+  username such as `discord-1a2b3c4d` and no password. The provider's access
+  token is used once to read the id and is not kept.
+- **What a member can see.** Only the runs they uploaded while signed in, and
+  of those only the diagnosis: not the master's notes, not the work log, not
+  similar cases from other people's runs (`/api/me` in
+  `api/pcdoctor_api/routers/runs.py`). They can delete their own runs. Every
+  master-only route answers 403 to a member, and a test checks each one
+  (`api/tests/test_auth.py`).
+- **Who can sign in.** With `PCDOCTOR_OAUTH_SIGNUP=false` (the default), only
+  identities the master has linked. With `true`, anyone with a Discord or
+  Google account gets a member account. The master can remove members; their
+  identities go with them.
+
+## Notifications and the Discord bot
+
+- **The webhook** (`PCDOCTOR_NOTIFY_WEBHOOK_URL`, optional) is sent one line
+  when a guest uploads a run: the verdict and the headline, e.g. "New guest
+  run (warning): GPU runs hot". Never the private link, the label, the PC's
+  parts list or anything about who sent it (`api/pcdoctor_api/services/notify.py`).
+- **The bot** (`bot/`) uploads a file someone gives it to `/diagnose` as a
+  guest, under a fixed file name (the person's own file name is not sent),
+  and replies with the summary. The reply is visible only to that person
+  unless they choose to show the summary to the channel; the private link
+  always goes to them alone. The bot keeps nothing. Its token (`PCDOCTOR_BOT_TOKEN`) only gives it a higher
+  upload limit; it cannot read any run.
+
 ## Photos
 
 Photos sent through a QR link are **stored** on the master (they are the

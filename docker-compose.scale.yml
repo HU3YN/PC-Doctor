@@ -40,6 +40,8 @@ services:
       PCDOCTOR_DATA_DIR: /data
       PCDOCTOR_REDIS_URL: redis://redis:6379/0
       PCDOCTOR_AUTO_MIGRATE: "false"   # the API owns the schema
+      # The worker tells the same webhook about guest runs it processes.
+      PCDOCTOR_NOTIFY_WEBHOOK_URL: ${PCDOCTOR_NOTIFY_WEBHOOK_URL:-}
     volumes:
       - rundata:/data
     healthcheck:
