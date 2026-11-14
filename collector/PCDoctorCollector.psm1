@@ -649,10 +649,25 @@ function Get-PCDoctorLhmSensors {
 }
 
 function Find-PCDoctorNvidiaSmi {
-    $command = Get-Command 'nvidia-smi.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($command) { return $command.Source }
-    $path = Join-Path $env:SystemRoot 'System32\nvidia-smi.exe'
-    if (Test-Path $path) { return $path }
+    # The NVIDIA driver puts nvidia-smi in System32, which only administrators
+    # can change, so look there first. The PATH is used only when not
+    # elevated. Either way it must be signed by NVIDIA.
+    param(
+        [switch]$Elevated,
+        [scriptblock]$IsTrusted = { param($file) Test-PCDoctorSignedBy -Path $file -Publisher 'NVIDIA Corporation' }
+    )
+    $candidates = @()
+    if ($env:SystemRoot) {
+        $system = Join-Path $env:SystemRoot 'System32\nvidia-smi.exe'
+        if (Test-Path -LiteralPath $system -PathType Leaf) { $candidates += $system }
+    }
+    if (-not $Elevated) {
+        $command = Get-Command 'nvidia-smi.exe' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($command) { $candidates += $command.Source }
+    }
+    foreach ($candidate in $candidates) {
+        if (& $IsTrusted $candidate) { return $candidate }
+    }
     return $null
 }
 
@@ -748,23 +763,58 @@ function Get-PCDoctorSensorHeader { 'elapsed_s,' + ($script:SensorColumns -join 
 
 # ------------------------------------------------------------- PresentMon
 
+function Test-PCDoctorSignedBy {
+    # True when the file carries a valid Authenticode signature (embedded or
+    # through a Windows catalog) whose certificate names the publisher as its
+    # CN or O. Used before running any program as administrator.
+    param([string]$Path, [string]$Publisher)
+    try {
+        $signature = Get-AuthenticodeSignature -LiteralPath $Path -ErrorAction Stop
+    } catch {
+        return $false
+    }
+    if ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate) { return $false }
+    $name = [regex]::Escape($Publisher)
+    return [bool]($signature.SignerCertificate.Subject -match "(^|,\s*)(CN|O)=`"?$name`"?(,|$)")
+}
+
 function Find-PCDoctorPresentMon {
     # Where is PresentMon? An explicit path, then the collector's own tools
-    # folder (Get-Tools.ps1 puts it there), then the PATH. Never downloads.
-    param([string]$ExplicitPath, [string]$ToolsDir)
+    # folder (Get-Tools.ps1 puts it there), then the PATH - but the PATH only
+    # when not elevated, because a folder on the PATH may be writable by
+    # anyone. Never downloads. Whatever is found must be signed by Intel,
+    # checked again here: Get-Tools.ps1 checked the download, but the tools
+    # folder could have been changed since (it travels on a USB stick).
+    # Returns @{ Path = <path or $null>; Problem = <text or $null> }.
+    param(
+        [string]$ExplicitPath,
+        [string]$ToolsDir,
+        [switch]$Elevated,
+        [scriptblock]$IsTrusted = { param($file) Test-PCDoctorSignedBy -Path $file -Publisher 'Intel Corporation' }
+    )
+    $candidates = @()
     if ($ExplicitPath) {
-        if (Test-Path -LiteralPath $ExplicitPath -PathType Leaf) { return (Resolve-Path -LiteralPath $ExplicitPath).Path }
-        return $null
+        if (Test-Path -LiteralPath $ExplicitPath -PathType Leaf) { $candidates += (Resolve-Path -LiteralPath $ExplicitPath).Path }
+    } else {
+        if ($ToolsDir -and (Test-Path -LiteralPath $ToolsDir)) {
+            $candidates += @(Get-ChildItem -LiteralPath $ToolsDir -Filter 'PresentMon*.exe' -ErrorAction SilentlyContinue |
+                Sort-Object Name -Descending | ForEach-Object { $_.FullName })
+        }
+        if (-not $Elevated) {
+            foreach ($name in @('PresentMon.exe', 'PresentMon-x64.exe')) {
+                $command = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($command) { $candidates += $command.Source }
+            }
+        }
     }
-    if ($ToolsDir -and (Test-Path -LiteralPath $ToolsDir)) {
-        $found = @(Get-ChildItem -LiteralPath $ToolsDir -Filter 'PresentMon*.exe' -ErrorAction SilentlyContinue | Sort-Object Name -Descending)
-        if ($found.Count -gt 0) { return $found[0].FullName }
+    if ($candidates.Count -eq 0) { return @{ Path = $null; Problem = $null } }
+    foreach ($candidate in $candidates) {
+        if (& $IsTrusted $candidate) { return @{ Path = $candidate; Problem = $null } }
     }
-    foreach ($name in @('PresentMon.exe', 'PresentMon-x64.exe')) {
-        $command = Get-Command $name -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($command) { return $command.Source }
+    return @{
+        Path    = $null
+        Problem = 'A PresentMon program was found but it does not carry a valid Intel signature, so it was not run. Delete the tools folder and run Get-Tools.ps1 again.'
     }
-    return $null
 }
 
 function Get-PCDoctorPresentMonArguments {

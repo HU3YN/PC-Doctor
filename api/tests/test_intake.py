@@ -160,3 +160,34 @@ def test_a_bezel_or_a_tilt_does_not_hide_the_stop_code(border, tilt):
     text = photo.read_text(framed(picture, border, tilt))
     found = errortext.interpret(text)
     assert "CRITICAL_PROCESS_DIED" in str(found), text
+
+
+def test_only_the_pinned_presentmon_is_shipped_with_the_collector(client, monkeypatch, tmp_path):
+    import hashlib
+    import re
+    import shutil
+    from pathlib import Path
+
+    from pcdoctor_api.config import get_settings
+
+    source = Path(__file__).resolve().parents[2] / "collector"
+    folder = tmp_path / "collector"
+    shutil.copytree(source, folder, ignore=shutil.ignore_patterns("tools", "runs"))
+    good = b"the file Get-Tools.ps1 pins"
+    script = folder / "Get-Tools.ps1"
+    text = script.read_text(encoding="utf-8")
+    pinned = hashlib.sha256(good).hexdigest().upper()
+    script.write_text(
+        re.sub(r"\$Sha256 = '[0-9A-F]{64}'", f"$Sha256 = '{pinned}'", text),
+        encoding="utf-8",
+    )
+    (folder / "tools").mkdir()
+    (folder / "tools" / "PresentMon-2.6.0-x64.exe").write_bytes(good)
+    (folder / "tools" / "PresentMon-9.9.9-x64.exe").write_bytes(b"planted")
+    monkeypatch.setenv("PCDOCTOR_COLLECTOR_DIR", str(folder))
+    get_settings.cache_clear()
+
+    response = client.get("/api/collector.zip")
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        tools = [n for n in archive.namelist() if "/tools/" in n]
+    assert tools == ["PCDoctor-collector/tools/PresentMon-2.6.0-x64.exe"]

@@ -7,7 +7,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
+import re
 import socket
 import zipfile
 from pathlib import Path
@@ -81,6 +83,29 @@ def collector_info(settings: Config) -> dict[str, Any]:
     }
 
 
+_PINNED_SHA256 = re.compile(r"\$Sha256\s*=\s*'([0-9A-Fa-f]{64})'")
+
+
+def pinned_presentmon_hashes(folder: Path) -> set[str]:
+    """The SHA-256 that Get-Tools.ps1 pins for PresentMon (its one source of truth)."""
+    try:
+        script = (folder / "Get-Tools.ps1").read_text(encoding="utf-8")
+    except OSError:
+        return set()
+    return {match.lower() for match in _PINNED_SHA256.findall(script)}
+
+
+def trusted_tools(folder: Path) -> list[Path]:
+    """PresentMon files in tools/ whose SHA-256 is the pinned one. Anything
+    else in that folder - a swapped or newer file - is left out of the zip."""
+    pinned = pinned_presentmon_hashes(folder)
+    kept = []
+    for tool in sorted((folder / "tools").glob("PresentMon*.exe")):
+        if hashlib.sha256(tool.read_bytes()).hexdigest() in pinned:
+            kept.append(tool)
+    return kept
+
+
 @router.get("/collector.zip")
 def collector_zip(settings: Config) -> Response:
     """The collector as one zip: unpack it onto a USB stick and double-click PCDoctor.cmd."""
@@ -98,8 +123,10 @@ def collector_zip(settings: Config) -> Response:
                 # cmd.exe needs CRLF line endings, whatever this server's checkout has.
                 data = data.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
             archive.writestr(f"PCDoctor-collector/{name}", data)
-        # PresentMon travels along if it has been fetched on this computer.
-        for tool in sorted((folder / "tools").glob("PresentMon*.exe")):
+        # PresentMon travels along if it has been fetched on this computer -
+        # but only the exact file Get-Tools.ps1 pins. (The collector checks
+        # Intel's signature again before running it.)
+        for tool in trusted_tools(folder):
             archive.write(tool, f"PCDoctor-collector/tools/{tool.name}")
     return Response(
         buffer.getvalue(),

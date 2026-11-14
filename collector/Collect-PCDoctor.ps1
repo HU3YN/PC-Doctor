@@ -159,8 +159,11 @@ Write-PCDoctorJson -Object $disks -Path (Join-Path $runDir 'disks.json')
 # ---- the capture --------------------------------------------------------
 $capture = $null
 if ($Mode -eq 'Capture') {
-    $presentMon = Find-PCDoctorPresentMon -ExplicitPath $PresentMonPath -ToolsDir (Join-Path $scriptDir 'tools')
-    if (-not $presentMon) {
+    $found = Find-PCDoctorPresentMon -ExplicitPath $PresentMonPath -ToolsDir (Join-Path $scriptDir 'tools') -Elevated:$isAdmin
+    $presentMon = $found.Path
+    if ($found.Problem) {
+        Add-Warning $found.Problem
+    } elseif (-not $presentMon) {
         Add-Warning 'PresentMon was not found, so frame times are skipped. Run Get-Tools.ps1 once to fetch it.'
     } elseif (-not $isAdmin) {
         Add-Warning 'PresentMon needs administrator rights to record frame times; it may record nothing.'
@@ -178,7 +181,7 @@ if ($Mode -eq 'Capture') {
         Write-PCDoctorJson -Object @{ sensors = @($first | Select-Object SensorId, Type, Text, Value) } -Path (Join-Path $runDir 'sensors_raw.json')
         Write-Step 'Sensors: LibreHardwareMonitor'
     } else {
-        $nvidiaSmi = Find-PCDoctorNvidiaSmi
+        $nvidiaSmi = Find-PCDoctorNvidiaSmi -Elevated:$isAdmin
         $sensorSource = $(if ($nvidiaSmi) { 'windows+nvidia-smi' } else { 'windows' })
         Add-Warning 'LibreHardwareMonitor is not answering, so there is no CPU temperature in this run. Start it and switch on Options > Remote Web Server > Run, then capture again.'
     }

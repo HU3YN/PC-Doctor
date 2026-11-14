@@ -209,6 +209,72 @@ Describe 'PresentMon arguments' {
     }
 }
 
+Describe 'Only signed tools are run' {
+    It 'checks a real signature and its publisher' {
+        $notepad = Join-Path $env:SystemRoot 'System32\notepad.exe'
+        Test-PCDoctorSignedBy -Path $notepad -Publisher 'Microsoft Corporation' | Should -BeTrue
+        Test-PCDoctorSignedBy -Path $notepad -Publisher 'Intel Corporation' | Should -BeFalse
+    }
+
+    It 'refuses an unsigned file and a missing one' {
+        $fake = Join-Path $TestDrive 'PresentMon-9.9.9-x64.exe'
+        Set-Content -LiteralPath $fake -Value 'not a program'
+        Test-PCDoctorSignedBy -Path $fake -Publisher 'Intel Corporation' | Should -BeFalse
+        Test-PCDoctorSignedBy -Path (Join-Path $TestDrive 'missing.exe') -Publisher 'Intel Corporation' | Should -BeFalse
+    }
+
+    It 'does not run a PresentMon that fails the check, and says why' {
+        $tools = Join-Path $TestDrive 'tools-unsigned'
+        New-Item -ItemType Directory -Path $tools | Out-Null
+        Set-Content -LiteralPath (Join-Path $tools 'PresentMon-2.6.0-x64.exe') -Value 'swapped'
+        $found = Find-PCDoctorPresentMon -ToolsDir $tools
+        $found.Path | Should -BeNullOrEmpty
+        $found.Problem | Should -Match 'Intel signature'
+    }
+
+    It 'takes the first PresentMon that passes, even if another sorts higher' {
+        $tools = Join-Path $TestDrive 'tools-mixed'
+        New-Item -ItemType Directory -Path $tools | Out-Null
+        Set-Content -LiteralPath (Join-Path $tools 'PresentMon-2.6.0-x64.exe') -Value 'good'
+        Set-Content -LiteralPath (Join-Path $tools 'PresentMon-9.9.9-x64.exe') -Value 'planted'
+        $found = Find-PCDoctorPresentMon -ToolsDir $tools -IsTrusted { param($file) $file -like '*2.6.0*' }
+        $found.Path | Should -BeLike '*PresentMon-2.6.0-x64.exe'
+        $found.Problem | Should -BeNullOrEmpty
+    }
+
+    It 'looks on the PATH only when not elevated' {
+        $folder = Join-Path $TestDrive 'on-path'
+        New-Item -ItemType Directory -Path $folder | Out-Null
+        Set-Content -LiteralPath (Join-Path $folder 'PresentMon.exe') -Value 'x'
+        $saved = $env:PATH
+        try {
+            $env:PATH = "$folder;$saved"
+            $empty = Join-Path $TestDrive 'no-tools'
+            (Find-PCDoctorPresentMon -ToolsDir $empty -IsTrusted { $true }).Path | Should -BeLike '*on-path*'
+            $elevated = Find-PCDoctorPresentMon -ToolsDir $empty -Elevated -IsTrusted { $true }
+            $elevated.Path | Should -BeNullOrEmpty
+            $elevated.Problem | Should -BeNullOrEmpty
+        } finally {
+            $env:PATH = $saved
+        }
+    }
+
+    It 'never returns an nvidia-smi that fails the check' {
+        $folder = Join-Path $TestDrive 'smi'
+        New-Item -ItemType Directory -Path $folder | Out-Null
+        Set-Content -LiteralPath (Join-Path $folder 'nvidia-smi.exe') -Value 'x'
+        $saved = $env:PATH
+        try {
+            $env:PATH = "$folder;$saved"
+            Find-PCDoctorNvidiaSmi -IsTrusted { $false } | Should -BeNullOrEmpty
+            Find-PCDoctorNvidiaSmi -IsTrusted { param($file) $file -like '*smi*' } | Should -Not -BeNullOrEmpty
+            Find-PCDoctorNvidiaSmi -Elevated -IsTrusted { param($file) $file -like "$folder*" } | Should -BeNullOrEmpty
+        } finally {
+            $env:PATH = $saved
+        }
+    }
+}
+
 Describe 'Reading this PC' {
     It 'reads specs without names or serial numbers' {
         $specs = Get-PCDoctorSpecs
