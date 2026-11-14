@@ -2,6 +2,8 @@ module github.com/HU3YN/PC-Doctor/upload-service
 
 go 1.26.0
 
+toolchain go1.26.11
+
 require (
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/prometheus/client_golang v1.25.0
