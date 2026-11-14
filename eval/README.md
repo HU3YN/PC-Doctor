@@ -48,14 +48,17 @@ git-ignored and never leave this computer.
 
 **What `--synthetic` proves:** only that the script, the OCR engine and the
 code finder are connected and that the scoring adds up. The images are drawn
-by the script and cropped to the screen; they have none of what makes a real
+by the script; they have none of what makes a real
 photo hard (glare, focus, a curved screen, moire, a bezel or desk in the
 frame). Its counts are a plumbing check and must never be quoted as a read
 rate.
 
-One thing seen while building the plumbing check, to look at with real photos:
-on drawn images, a dark border around the screen (a bezel, a desk) made the
-reader return no text at all. Real phone photos usually have one.
+Found while building the plumbing check, and fixed: on drawn images, a dark
+border around the screen (a bezel, a desk) or a 2 degree tilt made the reader
+return no text at all. The reader now cuts the photo down to the lit screen
+first (`crop_to_screen` in `api/pcdoctor_api/services/photo.py`), and
+`api/tests/test_intake.py` keeps it that way. Whether that is enough for real
+photos is still to be measured.
 
 **Not verified:** there are no real phone photos yet, so there is no measured
 read rate for the photo reader.

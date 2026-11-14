@@ -1,6 +1,8 @@
 # Threat model
 
-Written from the code at commit `1ae894f` (November 2026), not from the plans.
+Written from the code at commit `1ae894f` (November 2026), not from the plans,
+and updated on 2026-11-14 after the fixes listed in section 4 and the
+additions in section 3.9.
 Every mitigation below names the file and function that does it; if you change
 one of them, change this page too. "Open" means it is not handled today.
 
@@ -45,6 +47,9 @@ HTTPS. The threat model is written for those three set-ups:
 | **A compromised dependency** | Python (unpinned ranges), npm (lockfile), Go (`go.sum`), base images and GitHub Actions (tags), PresentMon (hash + signature checked) | - |
 
 ## 3. Entry points
+
+The "Still open" cells below are as first written. Several were fixed on
+2026-11-14; section 4 marks which.
 
 ### 3.1 The API (FastAPI, `api/pcdoctor_api/`)
 
@@ -146,26 +151,36 @@ CI checks real output for the computer name, user name and serial numbers
 
 | Item | Exists | Still open |
 |---|---|---|
-| Exposure | Compose binds nginx to `127.0.0.1` unless `PCDOCTOR_BIND` is set; Postgres and Redis are not published; the scale add-ons bind to `127.0.0.1`. Terraform opens 80/443 to all, SSH and 6443 to `admin_cidr` only, encrypted disk, IMDSv2. k8s: HTTPS only, cert-manager, security headers, `runAsNonRoot`, dropped capabilities, `readOnlyRootFilesystem` on the upload service. | Never applied to a real cluster or AWS account. No NetworkPolicy. LAN mode is plain HTTP by design. `Start-PCDoctor.ps1` still prints "There are no logins yet: anyone on this network can open it" in LAN mode, which is out of date and wrong in the other direction (stored data needs the master's sign-in now). |
+| Exposure | Compose binds nginx to `127.0.0.1` unless `PCDOCTOR_BIND` is set; Postgres and Redis are not published; the scale add-ons bind to `127.0.0.1`. Terraform opens 80/443 to all, SSH and 6443 to `admin_cidr` only, encrypted disk, IMDSv2. k8s: HTTPS only, cert-manager, security headers, `runAsNonRoot`, dropped capabilities, `readOnlyRootFilesystem` on the upload service. | Never applied to a real cluster or AWS account. No NetworkPolicy. LAN mode is plain HTTP by design. (The out-of-date LAN warning in `Start-PCDoctor.ps1` was fixed on 2026-11-14.) |
 | Default secrets | `.env` is git-ignored; k8s reads the `pcdoctor-secrets` Secret, created by hand. | Defaults when unset: `POSTGRES_PASSWORD=pcdoctor`, `GRAFANA_PASSWORD=pcdoctor` (localhost only), `PCDOCTOR_METRICS_TOKEN=local-metrics` (reachable through nginx). The setup code also shows in `docker compose logs`. |
-| Supply chain | `package-lock.json`, `go.sum`; `Get-Tools.ps1` pins PresentMon; `.github/dependabot.yml` exists; containers run as non-root (`api/Dockerfile`, `upload-service/Dockerfile`). | Python dependencies are lower bounds only (`api/pyproject.toml`), with no lock file, so a Docker build today can pull a different version than yesterday. Base images and GitHub Actions are pinned by tag, not digest/SHA. No `security.yml` workflow (pip-audit, npm audit, govulncheck, secret scan) yet. |
+| Supply chain | `package-lock.json`, `go.sum`; `Get-Tools.ps1` pins PresentMon; `.github/dependabot.yml` exists; containers run as non-root (`api/Dockerfile`, `upload-service/Dockerfile`). | Python dependencies are lower bounds only (`api/pyproject.toml`), with no lock file, so a Docker build today can pull a different version than yesterday. Base images and GitHub Actions are pinned by tag, not digest/SHA. `.github/workflows/security.yml` (added 2026-11-14) runs pip-audit, npm audit, govulncheck and gitleaks on every push and weekly; it found Go 1.26.0 standard-library vulnerabilities, fixed by pinning `toolchain go1.26.11`. |
+
+### 3.9 Added after the first version: live sessions and build comparison
+
+| Entry point | Threat | Exists | Still open |
+|---|---|---|---|
+| `POST /api/live` and the Live page (`routers/live.py`) | A guest opening sessions or watching one | Master only (in the route lists of `api/tests/test_auth.py`). | - |
+| `POST /api/live/{token}/samples` (`routers/live.py:add_samples`, `services/live.py:parse_batch`) | Flooding memory or Redis; junk numbers; reading data back | The token is random and only its hash is kept; it can only add. A batch is capped at 512 KB and 5,000 lines, read in chunks so a lying `Content-Length` does not help; each line must be a known type with finite numbers in range and sensor names matching `^[a-z][a-z0-9_]{0,39}$`; 600 batches a minute per token; each session keeps only the newest 6,000 frames and 600 sensor rows and expires after 6 hours; at most 20 sessions. The answer is only counts. | The per-token limit is counted in this process even when Redis holds the buffer. Plain HTTP on the LAN, as elsewhere. |
+| `--live-url` in `collector-rs` (`src/live.rs`) | Run data sent in the clear across the internet, or redirected | `check_url` refuses `http://` except to loopback and private addresses; redirects are not followed; only frame times and sensor values are sent. | - |
+| `GET /api/runs/{id}/compare` (`services/compare.py`) | SQL injection through DuckDB | Master only; the only values in the query are bound parameters, and column names come from a fixed list in the code. | - |
 
 ## 4. Open items, ranked
 
 Ranked by how likely and how bad, for the set-ups people actually use (local
-and LAN first, cloud second).
+and LAN first, cloud second). Items marked **Fixed** were fixed on 2026-11-14,
+each with a test; they stay in the table so the history is visible.
 
 | # | Item | Where | Set-up | Why this rank |
 |---|---|---|---|---|
 | 1 | The collector is fetched and run with no integrity check, as administrator; in LAN mode it travels over plain HTTP | `routers/intake.py:collector_zip`, `collector/PCDoctor.cmd` | LAN | Someone on the LAN gets admin code execution on every PC checked. Section 5 is the plan. |
 | 2 | `PresentMon*.exe` is not re-verified, neither when the server zips it nor when the collector runs it; PATH fallback for `PresentMon.exe` and `nvidia-smi.exe` | `intake.py:collector_zip`, `PCDoctorCollector.psm1:Find-PCDoctorPresentMon`, `Find-PCDoctorNvidiaSmi` | All | Same outcome as #1 by a different door; easy to fix (check hash + signature before `Start-Process`, drop the PATH fallback when elevated). |
 | 3 | Plain HTTP in LAN mode: session cookie, share keys, photo tokens and run data in clear | `Start-PCDoctor.ps1 -Lan`, `docker-compose.yml` | LAN | Documented and deliberate, but a LAN attacker can take the master's session. |
-| 4 | Rate-limit key is the proxy's address in k8s (Traefik -> nginx -> API) | `deps.py:client_key` with `web/nginx.conf` | Cloud | **Bug.** Anyone can lock the master out of password sign-in and use up guest uploads for everyone. Fix with nginx `set_real_ip_from` + `real_ip_header`, or count back a configured number of hops. |
-| 5 | Upload service keeps up to 1 GB of unpacked files in memory; pod limit is 768 Mi | `upload-service/archive.go:CleanRun`, `deploy/k8s/app.yaml` | Cloud, scale stack | **Bug.** A small zip bomb OOM-kills the upload service. Stream to a temp file as the Python side does, or lower the default limit well under the container limit. |
-| 6 | Blocking work inside `async def` routes: one upload or photo stalls the whole API | `routers/runs.py:upload_run`, `routers/inbox.py:send_photo`, `routers/intake.py:read_photo` | All | **Bug** (availability). Make them `def` after reading the body, or use `run_in_threadpool` for `ingest`/OCR. |
-| 7 | A duplicate upload replaces the share key; the earlier link dies and the re-uploader sees the run's label | `routers/runs.py:upload_run`, `worker.py:process_job` | All | **Bug** (untested behaviour). Keep the existing share hash, or store several keys per run. |
-| 8 | Discord webhook text is not escaped; a guest can post masked links in the master's channel | `services/notify.py:message_for` | When the webhook is set | Phishing in a trusted channel. Reuse the bot's `escape`. |
-| 9 | `/api/auth/setup` has no rate limit; two simultaneous setups can make two masters | `routers/auth.py:setup` | LAN/cloud before setup | Small window, but the fix is one line (`login_attempts.allow`) plus a lock or unique check. |
+| 4 | **Fixed:** `PCDOCTOR_PROXY_HOPS` (2 in `deploy/k8s/app.yaml`) skips exactly our own proxies in `deps.py:client_key`; `test_the_rate_limit_address_skips_only_our_own_proxies`. Was: Rate-limit key is the proxy's address in k8s (Traefik -> nginx -> API) | `deps.py:client_key` with `web/nginx.conf` | Cloud | **Bug.** Anyone can lock the master out of password sign-in and use up guest uploads for everyone. Fix with nginx `set_real_ip_from` + `real_ip_header`, or count back a configured number of hops. |
+| 5 | **Fixed:** `CleanRun` copies each file straight into the new zip; a 300 MB bomb now allocates about 1 MB (`TestZipBombIsNotHeldInMemoryUnpacked`). Was: Upload service keeps up to 1 GB of unpacked files in memory; pod limit is 768 Mi | `upload-service/archive.go:CleanRun`, `deploy/k8s/app.yaml` | Cloud, scale stack | **Bug.** A small zip bomb OOM-kills the upload service. Stream to a temp file as the Python side does, or lower the default limit well under the container limit. |
+| 6 | **Fixed:** unpacking, re-encoding and OCR run on a worker thread (`run_in_threadpool`). Was: Blocking work inside `async def` routes: one upload or photo stalls the whole API | `routers/runs.py:upload_run`, `routers/inbox.py:send_photo`, `routers/intake.py:read_photo` | All | **Bug** (availability). Make them `def` after reading the body, or use `run_in_threadpool` for `ingest`/OCR. |
+| 7 | **Fixed:** a run has one key per guest upload (`share_keys` table), each with its uploader's own label; `test_a_second_upload_of_the_same_file_does_not_break_the_first_link`. Was: A duplicate upload replaces the share key; the earlier link dies and the re-uploader sees the run's label | `routers/runs.py:upload_run`, `worker.py:process_job` | All | **Bug** (untested behaviour). Keep the existing share hash, or store several keys per run. |
+| 8 | **Fixed:** `notify.escape` escapes the headline like the bot does; tested in `test_oauth.py`. Was: Discord webhook text is not escaped; a guest can post masked links in the master's channel | `services/notify.py:message_for` | When the webhook is set | Phishing in a trusted channel. Reuse the bot's `escape`. |
+| 9 | **Fixed:** set-up attempts are rate-limited, the code is 64 bits, and a partial unique index allows one master. Was: `/api/auth/setup` has no rate limit; two simultaneous setups can make two masters | `routers/auth.py:setup` | LAN/cloud before setup | Small window, but the fix is one line (`login_attempts.allow`) plus a lock or unique check. |
 | 10 | Redis without a password; no NetworkPolicy | `docker-compose.scale.yml`, `deploy/k8s/data.yaml` | Scale/cloud | Needs a foothold inside the network first. |
 | 11 | Session and link management: 30-day sessions, no revoke, no password change/reset; photo links and share keys cannot be revoked | `services/auth.py`, `routers/inbox.py`, `routers/runs.py` | All | Limits recovery after a leak. |
 | 12 | Collector opens the browser from the elevated process; `share_key` from the server is not checked | `collector/Collect-PCDoctor.ps1` (upload block) | All | Elevated browser; validate the key with `^[A-Za-z0-9_-]{16,128}$` and open the link de-elevated (or just print it when elevated). |
@@ -176,7 +191,7 @@ and LAN first, cloud second).
 | 17 | `PCDOCTOR_PUBLIC_URL` may be `http://` for a non-local host | `services/oauth.py:configured` | Cloud | Flow cookie without `Secure`; docs say it must be HTTPS. |
 | 18 | Redis `INCR`/`EXPIRE` not atomic | `services/auth.py:RateLimiter.allow`, `upload-service/queue.go:redisQueue.Allow` | Scale | Rare permanent block of one key; use `SET NX EX` + `INCR` in a pipeline or a Lua script. |
 | 19 | Share keys and photo tokens in access logs | nginx, uvicorn | All | Logs are on the master's own server. |
-| 20 | Out-of-date LAN warning in the launcher | `Start-PCDoctor.ps1` | LAN | Wrong text, not a hole. |
+| 20 | **Fixed:** the launcher now says it uses plain HTTP. Was: Out-of-date LAN warning in the launcher | `Start-PCDoctor.ps1` | LAN | Wrong text, not a hole. |
 
 ## 5. Plan: signing the collector zip without a paid certificate
 

@@ -8,21 +8,27 @@ problem in front of you.
 > Working name. "PC-Doctor" is also the name of an existing commercial
 > diagnostics product, so pick another before publishing this widely.
 
-**Status:** Phase 1 is built and tested (see [what is verified](docs/results.md)).
-It has not yet been tried on a real gaming PC - that is the next step.
+**Status:** all ten phases of the [roadmap](docs/roadmap.md) have working,
+tested code, but most of it has only run in CI and a cloud build container.
+Nothing has been tried on a real gaming PC, phone, Discord server or AWS
+account yet - [what is verified](docs/results.md) and
+[what only you can test](docs/testing.md#what-only-the-owner-can-prove).
 
 ## How it works
 
 ```
- the PC being checked                    your computer
-+----------------------+   .zip    +-------------------------------------+
-|  collector           | --------> |  dashboard (React + TypeScript)     |
-|  read-only PowerShell|  USB or   |     |                               |
-|  specs, events,      |  upload   |  API (FastAPI) -> rules engine      |
-|  disks, frame times, |           |     |              (29 fault types) |
-|  sensors             |           |  PostgreSQL: runs, findings,        |
-+----------------------+           |              work log               |
-                                   +-------------------------------------+
+ the PC being checked                    your computer (or a server)
++----------------------+   .zip    +---------------------------------------+
+|  collector           | --------> |  dashboard (React + TypeScript)       |
+|  read-only PowerShell|  USB or   |     |                                 |
+|  (or the Rust        |  upload   |  API (FastAPI) -> rules engine        |
+|  capture collector)  |           |     |              (29 fault types)   |
+|  specs, events,      |  live     |  PostgreSQL: runs, findings, work log |
+|  disks, frame times, | --------> |  optional: Go upload service, Redis   |
+|  sensors             |  NDJSON   |  queue + worker, Prometheus, Grafana  |
++----------------------+           +---------------------------------------+
+   phone photos by QR code ------>   photo inbox (OCR)
+   Discord /diagnose --------------> bot -> API as a guest
 ```
 
 1. **Collect.** Copy the [`collector`](collector/) folder to the PC (a USB
@@ -44,10 +50,14 @@ your own earlier cases.
 
 ## Who sees what
 
-There are two kinds of visitor.
+There are three kinds of visitor.
 
 - **The master** (you, signed in) sees everything: every run, the work log,
-  the photo inbox. One account, created the first time the app starts.
+  the photo inbox, live sessions. One account, created the first time the
+  app starts.
+- **A member** (optional: someone who signed in with Discord or Google) sees
+  only the runs they uploaded while signed in. Off unless you set it up
+  ([docs/oauth.md](docs/oauth.md)).
 - **A guest** (anyone, no account) can check one PC: download the collector,
   run it, and get a **private link** to that one diagnosis. A guest cannot
   list, search or open anything else - not other runs, not the work log.
@@ -118,12 +128,20 @@ and send photos; only you can sign in and see what is stored.
 
 ### Putting it in the cloud
 
-The sign-in is what makes hosting it reasonable: run the same Docker Compose
-stack on a server, put HTTPS in front of it, and the collector and phones can
-reach it from anywhere. That is Phase 3 of the roadmap and is **not done
-yet**. Before exposing it to the internet: use HTTPS (the sign-in cookie and
-photos must not travel in the clear), set a strong `POSTGRES_PASSWORD`, create
-the master account straight away, and keep backups.
+[`deploy/`](deploy/) has Terraform for one small AWS server running k3s, the
+Kubernetes manifests, Prometheus alerts, a Grafana dashboard and a k6 load
+test. They are checked for format and schema in CI but **have never been
+applied to a real account**. Before exposing it to the internet: HTTPS only
+(the sign-in cookie and photos must not travel in the clear), strong
+passwords for PostgreSQL, Grafana and the metrics token, the master account
+created straight away, and backups. [deploy/README.md](deploy/README.md) walks
+through it.
+
+### Watching a capture live
+
+On the master, **Live** starts a session and shows an address. Give it to the
+Rust capture collector (`--live-url`) and the page draws frame times and
+temperatures while the game runs. The finished run is uploaded as usual.
 
 ### By hand
 
@@ -154,7 +172,7 @@ deletes it - use **Work log > Backup** first). Without Docker, see
   battery, firmware limiting the CPU
 
 The thresholds are sensible starting values, not measured optimums. Tuning
-them against real, labeled faults is Phase 2.
+them needs real, labeled faults ([fault-testing.md](docs/fault-testing.md)).
 
 ## Privacy
 
@@ -168,12 +186,19 @@ Details: [docs/privacy.md](docs/privacy.md).
 | Folder | What is in it |
 |---|---|
 | [`collector/`](collector/) | Windows collector (PowerShell 5.1 and 7), launcher, tests |
+| [`collector-rs/`](collector-rs/) | Rust capture collector (frames and sensors only), with live streaming |
 | [`workers/`](workers/) | Python analysis: parsers, rules engine, stop-code guide |
-| [`api/`](api/) | FastAPI backend: runs, findings, work log, PostgreSQL migrations |
+| [`api/`](api/) | FastAPI backend: runs, findings, work log, sign-in, live sessions, build comparison, PostgreSQL migrations |
 | [`web/`](web/) | React + TypeScript dashboard |
-| [`eval/`](eval/) | Labeled fault cases and the scoring harness |
-| [`docs/`](docs/) | Privacy, run format, rules, verified facts, safe fault testing, roadmap, results |
-| `upload-service/`, `bot/`, `ml/`, `sensor-node/`, `fuzz/`, `deploy/` | Placeholders for later phases |
+| [`upload-service/`](upload-service/) | Go upload service: checks uploads and queues them in Redis |
+| [`bot/`](bot/) | Discord bot with `/diagnose` |
+| [`deploy/`](deploy/) | Terraform, k3s manifests, Prometheus, Grafana, k6 load test |
+| [`ml/frames/`](ml/frames/) | PyTorch frame-time model, ONNX export and benchmark |
+| [`ml/leds/`](ml/leds/) | Debug-LED photo classifier (not wired into the API yet) |
+| [`sensor-node/`](sensor-node/) | ESP32 + SHT31 case sensor: firmware and UDP receiver |
+| [`eval/`](eval/) | Scoring for the diagnosis, the AI troubleshooter and the photo reader |
+| [`fuzz/`](fuzz/) | Hypothesis fuzz tests for everything that reads files from strangers |
+| [`docs/`](docs/) | Privacy, threat model, testing, run format, rules, roadmap, results |
 
 ## Develop
 
@@ -182,32 +207,25 @@ pip install -e "workers[dev]" -e "api[dev]"
 ```
 
 ```bash
-pytest workers api
-```
-
-```bash
-ruff check workers api
+pytest workers -q && pytest api -q
 ```
 
 ```bash
 npm --prefix web test && npm --prefix web run lint
 ```
 
-```bash
-python eval/run_eval.py
-```
-
-Every push runs all of this in GitHub Actions, on Linux, on PostgreSQL, and -
-for the collector - on a real Windows machine. See
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+Every part has its own run and test command in
+[docs/testing.md](docs/testing.md). Every push runs them in GitHub Actions -
+on Linux, on PostgreSQL, on real Windows for the collectors - plus a security
+workflow (dependency audits, secret scan, fuzzing) that also runs weekly. See
+[`.github/workflows/`](.github/workflows/).
 
 ## Where it is going
 
-Ten phases: AI troubleshooter and a labeled fault set, cloud and scale (Go,
-Terraform, k3s, Prometheus), accounts and a Discord bot, a PyTorch model, a
-Rust collector with streaming and DuckDB, an ESP32 sensor node, an inference
-benchmark, security hardening, and a trained photo reader. See
-[docs/roadmap.md](docs/roadmap.md).
+The code for all ten phases exists; what is left is mostly real-world
+testing and measuring: a capture on a real gaming PC, a labeled set of real
+faults, real photos, real accounts and a real server. See
+[docs/roadmap.md](docs/roadmap.md) and [docs/testing.md](docs/testing.md).
 
 ## License
 
