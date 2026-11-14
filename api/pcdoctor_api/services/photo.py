@@ -62,6 +62,35 @@ def available() -> bool:
     return True
 
 
+ALLOWED_FORMATS = ("JPEG", "PNG", "WEBP")
+
+
+def open_photo(data: bytes):
+    """Decode an upload as JPEG, PNG or WebP only - not every format Pillow
+    knows (each one is more parser code facing a stranger's file) - and refuse
+    images too large to decode safely instead of only warning about them."""
+    import warnings
+
+    from PIL import Image, UnidentifiedImageError
+
+    Image.MAX_IMAGE_PIXELS = MAX_PIXELS
+    try:
+        with warnings.catch_warnings():
+            # Pillow only warns between MAX_PIXELS and twice that; make it an error.
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            image = Image.open(io.BytesIO(data), formats=ALLOWED_FORMATS)
+            image.load()
+    except (
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+        Image.DecompressionBombError,
+        Image.DecompressionBombWarning,
+    ):
+        raise PhotoError("That file is not a photo this can read (use JPG or PNG).") from None
+    return image
+
+
 def read_text(data: bytes) -> str:
     """The text in the image. Raises PhotoError for something that is not a usable image.
 
@@ -71,14 +100,9 @@ def read_text(data: bytes) -> str:
     the most letters and digits wins.
     """
     pytesseract, Image = _engine()
-    from PIL import ImageOps, UnidentifiedImageError
+    from PIL import ImageOps
 
-    Image.MAX_IMAGE_PIXELS = MAX_PIXELS
-    try:
-        image = Image.open(io.BytesIO(data))
-        image.load()
-    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, ValueError):
-        raise PhotoError("That file is not a photo this can read (use JPG or PNG).") from None
+    image = open_photo(data)
 
     image = ImageOps.exif_transpose(image)  # phones store rotation separately
     image = image.convert("L")
@@ -193,15 +217,10 @@ def to_jpeg(data: bytes) -> bytes:
     position and phone model that cameras hide inside the file.
     """
     try:
-        from PIL import Image, ImageOps, UnidentifiedImageError
+        from PIL import ImageOps
     except ImportError as error:
         raise OcrUnavailable("Photo support is not installed on this server.") from error
-    Image.MAX_IMAGE_PIXELS = MAX_PIXELS
-    try:
-        image = Image.open(io.BytesIO(data))
-        image.load()
-    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, ValueError):
-        raise PhotoError("That file is not a photo this can read (use JPG or PNG).") from None
+    image = open_photo(data)
     image = ImageOps.exif_transpose(image).convert("RGB")
     if max(image.size) > MAX_SIDE:
         image.thumbnail((MAX_SIDE, MAX_SIDE))

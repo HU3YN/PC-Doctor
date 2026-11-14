@@ -191,3 +191,32 @@ def test_only_the_pinned_presentmon_is_shipped_with_the_collector(client, monkey
     with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
         tools = [n for n in archive.namelist() if "/tools/" in n]
     assert tools == ["PCDoctor-collector/tools/PresentMon-2.6.0-x64.exe"]
+
+
+def test_only_jpeg_png_and_webp_are_decoded():
+    from PIL import Image
+
+    def encoded(kind: str, size=(64, 48)) -> bytes:
+        buffer = io.BytesIO()
+        Image.new("RGB", size, (0, 120, 215)).save(buffer, kind)
+        return buffer.getvalue()
+
+    for kind in ("JPEG", "PNG", "WEBP"):
+        assert photo.open_photo(encoded(kind)).size == (64, 48)
+    for kind in ("GIF", "BMP", "TIFF", "PPM"):
+        with pytest.raises(photo.PhotoError):
+            photo.open_photo(encoded(kind))
+
+
+def test_an_image_over_the_pixel_limit_is_refused_not_just_warned_about(monkeypatch):
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("L", (120, 100), 0).save(buffer, "PNG")  # 12,000 pixels
+    # Between the limit and twice the limit, Pillow itself only warns.
+    monkeypatch.setattr(photo, "MAX_PIXELS", 10_000)
+    with pytest.raises(photo.PhotoError):
+        photo.open_photo(buffer.getvalue())
+    monkeypatch.setattr(photo, "MAX_PIXELS", 5_000)
+    with pytest.raises(photo.PhotoError):
+        photo.open_photo(buffer.getvalue())
