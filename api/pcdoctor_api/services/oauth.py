@@ -22,9 +22,10 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 import secrets
 from dataclasses import dataclass
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 
@@ -75,9 +76,29 @@ def credentials(settings: Settings, name: str) -> tuple[str, str]:
     }.get(name, ("", ""))
 
 
+def public_url_ok(url: str) -> bool:
+    """HTTPS, or plain HTTP only to this computer or a private network.
+
+    The sign-in comes back to this address carrying a one-time code, and the
+    flow cookie is only marked Secure on HTTPS, so across the internet it must
+    be HTTPS (docs/oauth.md)."""
+    parts = urlsplit(url.strip())
+    if parts.scheme == "https" and parts.hostname:
+        return True
+    if parts.scheme != "http" or not parts.hostname:
+        return False
+    if parts.hostname == "localhost":
+        return True
+    try:
+        address = ipaddress.ip_address(parts.hostname)
+    except ValueError:
+        return False  # a name on plain HTTP: could be anywhere
+    return address.is_loopback or address.is_private
+
+
 def configured(settings: Settings) -> list[Provider]:
     """Providers that can be used: both keys set, and we know our own address."""
-    if not settings.public_url:
+    if not settings.public_url or not public_url_ok(settings.public_url):
         return []
     return [p for p in PROVIDERS.values() if all(credentials(settings, p.name))]
 

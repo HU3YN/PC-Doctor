@@ -18,6 +18,7 @@ from .db import get_db, migrate
 from .routers import assist, auth, inbox, intake, live, oauth, reference, runs, worklog
 from .services import auth as auth_service
 from .services import live as live_service
+from .services import oauth as oauth_service
 
 
 @contextmanager
@@ -35,6 +36,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     auth_service.use_shared_limits(settings.redis_url)
     auth_service.bot_uploads.limit = settings.bot_uploads_per_hour
     live_service.use_redis(settings.redis_url)
+    if settings.public_url and not oauth_service.public_url_ok(settings.public_url):
+        print(
+            "PC Doctor: PCDOCTOR_PUBLIC_URL must be https:// (plain http:// only to this "
+            "computer or a private network address), so Discord/Google sign-in is off.",
+            flush=True,
+        )
     # Until the master account exists, make sure the setup code does, and show
     # it where only someone at the server can see it.
     try:

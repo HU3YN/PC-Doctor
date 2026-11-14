@@ -82,6 +82,29 @@ def test_nothing_is_offered_until_it_is_configured(client, guest):
     assert guest.get("/api/auth/oauth/myspace/start", follow_redirects=False).status_code == 404
 
 
+@pytest.mark.parametrize(
+    ("url", "ok"),
+    [
+        ("https://pcdoctor.example.com", True),
+        ("http://localhost:8080", True),
+        ("http://127.0.0.1:8080", True),
+        ("http://192.168.1.20:8080", True),
+        ("http://pcdoctor.example.com", False),
+        ("http://8.8.8.8", False),
+        ("ftp://pcdoctor.example.com", False),
+        ("pcdoctor.example.com", False),
+    ],
+)
+def test_the_public_address_must_be_https_across_the_internet(url, ok):
+    assert oauth.public_url_ok(url) is ok
+
+
+def test_sign_in_is_off_with_a_plain_http_public_address(client, provider, monkeypatch, guest):
+    monkeypatch.setattr(get_settings(), "public_url", "http://pcdoctor.example.com")
+    assert guest.get("/api/auth/oauth").json()["providers"] == []
+    assert guest.get("/api/auth/oauth/discord/start", follow_redirects=False).status_code == 404
+
+
 def test_the_request_to_the_provider_asks_for_the_least(client, provider):
     visitor = browser(client)
     started = visitor.get("/api/auth/oauth/discord/start", follow_redirects=False)
