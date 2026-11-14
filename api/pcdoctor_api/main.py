@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -60,6 +60,34 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+# Sent with every response (web/security-headers.conf has the same for nginx).
+# The dashboard loads nothing from other sites, so the policy can be strict:
+# no inline scripts, no frames, no plugins. Images may be data: URLs (the QR
+# code) and blob: URLs (photo previews).
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; script-src 'self'; style-src 'self'; "
+    "img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; "
+    "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+)
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    # A private link (/r/<key>) must never travel to another site as a referrer.
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "DENY",
+    "Permissions-Policy": "geolocation=(), microphone=(), payment=(), usb=()",
+}
+
+
+async def security_headers(request: Request, call_next):  # noqa: ANN001, ANN201
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    # The API's own documentation page loads its scripts from a CDN.
+    if request.url.path != "/api/docs":
+        response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+    return response
+
+
 def mount_dashboard(app: FastAPI, dist: Path) -> None:
     """Serve the built dashboard, so one process is the whole app.
 
@@ -99,6 +127,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_headers=["*"],
         )
     app.middleware("http")(metrics.record_request)
+    app.middleware("http")(security_headers)
     app.include_router(metrics.router)
     app.include_router(reference.router)
     app.include_router(runs.router)

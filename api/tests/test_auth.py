@@ -200,6 +200,7 @@ def test_every_api_route_is_either_master_only_or_deliberately_public(client):
         ("GET", "/api/noboot"),
         ("GET", "/api/collector"),
         ("GET", "/api/collector.zip"),
+        ("GET", "/api/collector/presentmon.zip"),  # only the pinned file
         ("POST", "/api/runs"),
         ("GET", "/api/shared/{key}"),
         ("GET", "/api/shared/{key}/series"),
@@ -599,3 +600,19 @@ def test_the_rate_limit_address_skips_only_our_own_proxies(hops, header, expecte
     settings = Settings(trust_proxy=True, proxy_hops=hops)
     assert client_key(request, settings) == expected
     assert client_key(request, Settings(trust_proxy=False)) == "10.42.0.99"
+
+
+def test_every_response_carries_the_security_headers(client, guest):
+    for response in (guest.get("/api/health"), guest.get("/api/runs"), client.get("/api/runs")):
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["referrer-policy"] == "no-referrer"  # private links stay private
+        assert response.headers["x-frame-options"] == "DENY"
+        policy = response.headers["content-security-policy"]
+        assert "script-src 'self'" in policy and "frame-ancestors 'none'" in policy
+    # The nginx copy of the policy (Docker) must match the API's.
+    from pathlib import Path
+
+    from pcdoctor_api.main import CONTENT_SECURITY_POLICY
+
+    snippet = (Path(__file__).resolve().parents[2] / "web" / "security-headers.conf").read_text()
+    assert f'Content-Security-Policy "{CONTENT_SECURITY_POLICY}"' in snippet
