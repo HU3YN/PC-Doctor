@@ -108,7 +108,7 @@ def setup_code(data_dir: Path) -> str:
         code = path.read_text(encoding="utf-8").strip()
         if code:
             return code
-    code = secrets.token_hex(4)
+    code = secrets.token_hex(8)  # 64 bits, and tries are rate-limited
     data_dir.mkdir(parents=True, exist_ok=True)
     path.write_text(code + "\n", encoding="utf-8")
     return code

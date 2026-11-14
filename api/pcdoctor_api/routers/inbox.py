@@ -16,6 +16,7 @@ from pcdoctor_analysis.errortext import interpret
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from ..config import Settings, get_settings
 from ..db import get_db, utcnow
@@ -132,13 +133,13 @@ async def send_photo(
     if not data:
         raise HTTPException(status_code=400, detail="The uploaded file is empty.")
     try:
-        jpeg = photo_service.to_jpeg(data)
+        jpeg = await run_in_threadpool(photo_service.to_jpeg, data)
     except photo_service.PhotoError as error:
         raise HTTPException(status_code=400, detail=str(error)) from None
     except photo_service.OcrUnavailable as error:
         raise HTTPException(status_code=503, detail=str(error)) from None
     try:
-        text = photo_service.read_text(jpeg)
+        text = await run_in_threadpool(photo_service.read_text, jpeg)
     except (photo_service.OcrUnavailable, photo_service.PhotoError):
         text = ""  # the photo is still worth having without the text
     reading = interpret(text)

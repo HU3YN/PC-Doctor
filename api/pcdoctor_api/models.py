@@ -22,6 +22,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -175,6 +176,18 @@ class Account(Base):
 
     identities: Mapped[list[Identity]] = relationship(
         back_populates="account", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+    # At most one master, enforced by the database itself: two set-up requests
+    # at the same moment cannot both win.
+    __table_args__ = (
+        Index(
+            "uq_accounts_one_master",
+            "role",
+            unique=True,
+            sqlite_where=text("role = 'master'"),
+            postgresql_where=text("role = 'master'"),
+        ),
     )
 
 

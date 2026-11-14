@@ -294,6 +294,47 @@ def test_guest_uploads_are_rate_limited(client, guest, monkeypatch):
     )  # the master is not limited
 
 
+def test_setup_guesses_are_rate_limited_and_the_code_is_long(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from pcdoctor_api import db
+    from pcdoctor_api.main import create_app
+
+    monkeypatch.setenv("PCDOCTOR_DATA_DIR", str(tmp_path / "fresh"))
+    monkeypatch.setenv("PCDOCTOR_DATABASE_URL", "")
+    get_settings.cache_clear()
+    db.reset_engine()
+    auth.login_attempts.reset()
+    try:
+        with TestClient(create_app()) as fresh:
+            code = auth.setup_code(get_settings().data_dir)
+            assert len(code) == 16
+            body = {"username": "x", "password": "long enough pw", "setup_code": "0" * 16}
+            answers = [fresh.post("/api/auth/setup", json=body).status_code for _ in range(9)]
+            assert answers[:8] == [403] * 8 and answers[8] == 429
+            # Even the right code waits now: guessing is what the limit stops.
+            right = {**body, "setup_code": code}
+            assert fresh.post("/api/auth/setup", json=right).status_code == 429
+    finally:
+        auth.login_attempts.reset()
+        db.reset_engine()
+        get_settings.cache_clear()
+
+
+def test_the_database_allows_only_one_master(client, session):
+    from sqlalchemy.exc import IntegrityError
+
+    from pcdoctor_api.models import Account
+
+    session.add(Account(username="second", password_hash="x", role="master"))
+    with pytest.raises(IntegrityError):
+        session.commit()
+    session.rollback()
+    session.add(Account(username="member-1", password_hash="x", role="member"))
+    session.add(Account(username="member-2", password_hash="x", role="member"))
+    session.commit()  # members are not limited
+
+
 def test_the_bot_token_only_raises_the_upload_limit(client, guest, monkeypatch):
     from pcdoctor_api.config import get_settings
 

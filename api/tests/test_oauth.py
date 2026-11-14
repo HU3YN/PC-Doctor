@@ -235,6 +235,13 @@ def test_webhook_gets_the_headline_and_nothing_private(client, guest, monkeypatc
     assert text.startswith("New guest run (critical)") and key not in text and "secret" not in text
     assert sent[0][1]["allowed_mentions"] == {"parse": []}
 
+    # A part name comes from the uploaded file: it must not become a link or a ping.
+    run = session.scalar(select(Run))
+    run.headline = "Disk [click me](https://evil.example) failing @everyone <@123>"
+    text = notify.message_for(run)
+    assert "](" not in text and "https://" not in text  # escaped: no link
+    assert "\\<@" in text and "@everyone" not in text  # escaped: no ping
+
     monkeypatch.setenv("PCDOCTOR_NOTIFY_WEBHOOK_URL", "http://169.254.169.254/latest")
     get_settings.cache_clear()
     assert notify.new_guest_run(get_settings(), session.scalar(select(Run))) is False

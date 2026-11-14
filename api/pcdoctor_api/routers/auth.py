@@ -8,6 +8,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
@@ -56,11 +57,15 @@ def status(db: Db, account: MaybeAccount) -> dict[str, Any]:
 
 @router.post("/setup")
 def setup(
-    body: Setup, request: Request, response: Response, db: Db, settings: Config
+    body: Setup, request: Request, response: Response, db: Db, settings: Config, key: ClientKey
 ) -> dict[str, Any]:
     """Create the master account. Works once, and needs the server's setup code."""
     if auth.master_exists(db):
         raise HTTPException(status_code=409, detail="The master account already exists.")
+    if not auth.login_attempts.allow(f"setup:{key}"):
+        raise HTTPException(
+            status_code=429, detail="Too many attempts. Wait 15 minutes and try again."
+        )
     expected = auth.setup_code(settings.data_dir)
     if not hmac.compare_digest(body.setup_code.strip().lower(), expected):
         raise HTTPException(status_code=403, detail="That setup code is not right.")
@@ -73,7 +78,12 @@ def setup(
         username=body.username.strip(), password_hash=auth.hash_password(body.password)
     )
     db.add(account)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Two set-ups at the same moment: the database allows one master.
+        db.rollback()
+        raise HTTPException(status_code=409, detail="The master account already exists.") from None
     (settings.data_dir / "setup-code.txt").unlink(missing_ok=True)
     set_cookie(response, request, auth.create_session(db, account))
     return {"signed_in": True, "username": account.username, "role": account.role}

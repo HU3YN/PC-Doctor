@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 from pcdoctor_analysis import RULES_VERSION
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
+from starlette.concurrency import run_in_threadpool
 
 from ..config import Settings, get_settings
 from ..db import get_db
@@ -165,8 +166,15 @@ async def upload_run(
         _check_upload_limit(request, settings, key)
     data = await read_limited(file, settings.max_upload_mb * 1024 * 1024)
     try:
-        result = ingest_service.ingest(
-            db, settings, data, label=label, source="guest" if guest else "master"
+        # Unpacking and analysing takes a while: on a thread, so other
+        # requests are not held up behind it.
+        result = await run_in_threadpool(
+            ingest_service.ingest,
+            db,
+            settings,
+            data,
+            label=label,
+            source="guest" if guest else "master",
         )
     except ingest_service.UploadError as error:
         raise HTTPException(status_code=400, detail=str(error)) from None
