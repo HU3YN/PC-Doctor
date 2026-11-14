@@ -186,3 +186,18 @@ def test_the_redis_store_keeps_and_trims_samples(client, guest, monkeypatch):
     assert [s["id"] for s in client.get("/api/live").json()] == [session["id"]]
     assert client.delete(f"/api/live/{session['id']}").status_code == 204
     assert client.get(f"/api/live/{session['id']}").status_code == 404
+
+
+def test_with_redis_the_batch_limit_is_shared_too(monkeypatch):
+    import sys
+    import types
+
+    client = object()
+    fake = types.SimpleNamespace(Redis=types.SimpleNamespace(from_url=lambda url, **_: client))
+    monkeypatch.setitem(sys.modules, "redis", fake)
+    try:
+        live.use_redis("redis://:secret@redis:6379/0")
+        assert isinstance(live.store, live.RedisStore) and live.ingest_limit._redis is client
+    finally:
+        live.use_redis("")
+    assert isinstance(live.store, live.MemoryStore) and live.ingest_limit._redis is None

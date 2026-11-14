@@ -315,16 +315,23 @@ ingest_limit = auth.RateLimiter("live", limit=600, window=60)  # batches per tok
 
 
 def use_redis(redis_url: str) -> None:
+    """Keep sessions, and the per-token batch count, in Redis when one is
+    configured, so several API copies share them."""
     global store
     if not redis_url:
         store = MemoryStore()
+        ingest_limit._redis = None
         return
     try:
         import redis
 
-        store = RedisStore(redis.Redis.from_url(redis_url, socket_timeout=2))
+        client = redis.Redis.from_url(redis_url, socket_timeout=2)
     except ImportError:
         store = MemoryStore()
+        ingest_limit._redis = None
+        return
+    store = RedisStore(client)
+    ingest_limit._redis = client
 
 
 def view(session: Session) -> dict[str, Any]:
