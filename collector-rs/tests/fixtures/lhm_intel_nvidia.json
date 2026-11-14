@@ -1,0 +1,471 @@
+{
+ "id": 0,
+ "Text": "Sensor",
+ "Min": "",
+ "Value": "",
+ "Max": "",
+ "ImageURL": "",
+ "Children": [
+  {
+   "id": 0,
+   "Text": "BENCH-PC",
+   "Min": "",
+   "Value": "",
+   "Max": "",
+   "ImageURL": "",
+   "Children": [
+    {
+     "id": 0,
+     "Text": "Intel Core i7-12700K",
+     "Min": "",
+     "Value": "",
+     "Max": "",
+     "HardwareId": "/intelcpu/0",
+     "ImageURL": "",
+     "Children": [
+      {
+       "id": 0,
+       "Text": "Clocks",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "Bus Speed",
+         "Min": "",
+         "Value": "100,0 MHz",
+         "Max": "",
+         "SensorId": "/intelcpu/0/clock/0",
+         "Type": "Clock",
+         "RawMin": "",
+         "RawValue": "100.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        },
+        {
+         "id": 0,
+         "Text": "P-Core #1",
+         "Min": "",
+         "Value": "4900,0 MHz",
+         "Max": "",
+         "SensorId": "/intelcpu/0/clock/1",
+         "Type": "Clock",
+         "RawMin": "",
+         "RawValue": "4900.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        },
+        {
+         "id": 0,
+         "Text": "P-Core #2",
+         "Min": "",
+         "Value": "4700,0 MHz",
+         "Max": "",
+         "SensorId": "/intelcpu/0/clock/2",
+         "Type": "Clock",
+         "RawMin": "",
+         "RawValue": "4700.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      },
+      {
+       "id": 0,
+       "Text": "Temperatures",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "CPU Package",
+         "Min": "",
+         "Value": "72,5 °C",
+         "Max": "",
+         "SensorId": "/intelcpu/0/temperature/8",
+         "Type": "Temperature",
+         "RawMin": "",
+         "RawValue": "72.5",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        },
+        {
+         "id": 0,
+         "Text": "P-Core #1 Distance to TjMax",
+         "Min": "",
+         "Value": "27,5 °C",
+         "Max": "",
+         "SensorId": "/intelcpu/0/temperature/9",
+         "Type": "Temperature",
+         "RawMin": "",
+         "RawValue": "27.5",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      },
+      {
+       "id": 0,
+       "Text": "Load",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "CPU Total",
+         "Min": "",
+         "Value": "38,0 %",
+         "Max": "",
+         "SensorId": "/intelcpu/0/load/0",
+         "Type": "Load",
+         "RawMin": "",
+         "RawValue": "38.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        },
+        {
+         "id": 0,
+         "Text": "CPU Core Max",
+         "Min": "",
+         "Value": "88,0 %",
+         "Max": "",
+         "SensorId": "/intelcpu/0/load/1",
+         "Type": "Load",
+         "RawMin": "",
+         "RawValue": "88.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      },
+      {
+       "id": 0,
+       "Text": "Powers",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "CPU Package",
+         "Min": "",
+         "Value": "95,2 W",
+         "Max": "",
+         "SensorId": "/intelcpu/0/power/0",
+         "Type": "Power",
+         "RawMin": "",
+         "RawValue": "95.25",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": 0,
+     "Text": "Generic Memory",
+     "Min": "",
+     "Value": "",
+     "Max": "",
+     "HardwareId": "/ram",
+     "ImageURL": "",
+     "Children": [
+      {
+       "id": 0,
+       "Text": "Load",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "Memory",
+         "Min": "",
+         "Value": "48,2 %",
+         "Max": "",
+         "SensorId": "/ram/load/0",
+         "Type": "Load",
+         "RawMin": "",
+         "RawValue": "48.25",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": 0,
+     "Text": "Virtual Memory",
+     "Min": "",
+     "Value": "",
+     "Max": "",
+     "HardwareId": "/vram",
+     "ImageURL": "",
+     "Children": [
+      {
+       "id": 0,
+       "Text": "Load",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "Memory",
+         "Min": "",
+         "Value": "30,0 %",
+         "Max": "",
+         "SensorId": "/vram/load/0",
+         "Type": "Load",
+         "RawMin": "",
+         "RawValue": "30.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": 0,
+     "Text": "Intel UHD Graphics 770",
+     "Min": "",
+     "Value": "",
+     "Max": "",
+     "HardwareId": "/gpu-intel-integrated/0",
+     "ImageURL": "",
+     "Children": [
+      {
+       "id": 0,
+       "Text": "Load",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "D3D 3D",
+         "Min": "",
+         "Value": "2,0 %",
+         "Max": "",
+         "SensorId": "/gpu-intel-integrated/0/load/0",
+         "Type": "Load",
+         "RawMin": "",
+         "RawValue": "2.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": 0,
+     "Text": "NVIDIA GeForce RTX 3070",
+     "Min": "",
+     "Value": "",
+     "Max": "",
+     "HardwareId": "/gpu-nvidia/0",
+     "ImageURL": "",
+     "Children": [
+      {
+       "id": 0,
+       "Text": "Temperatures",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "GPU Core",
+         "Min": "",
+         "Value": "68,0 °C",
+         "Max": "",
+         "SensorId": "/gpu-nvidia/0/temperature/0",
+         "Type": "Temperature",
+         "RawMin": "",
+         "RawValue": "68.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        },
+        {
+         "id": 0,
+         "Text": "GPU Hot Spot",
+         "Min": "",
+         "Value": "80,5 °C",
+         "Max": "",
+         "SensorId": "/gpu-nvidia/0/temperature/2",
+         "Type": "Temperature",
+         "RawMin": "",
+         "RawValue": "80.5",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      },
+      {
+       "id": 0,
+       "Text": "Load",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "GPU Core",
+         "Min": "",
+         "Value": "97,0 %",
+         "Max": "",
+         "SensorId": "/gpu-nvidia/0/load/0",
+         "Type": "Load",
+         "RawMin": "",
+         "RawValue": "97.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      },
+      {
+       "id": 0,
+       "Text": "Clocks",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "GPU Core",
+         "Min": "",
+         "Value": "1890,0 MHz",
+         "Max": "",
+         "SensorId": "/gpu-nvidia/0/clock/0",
+         "Type": "Clock",
+         "RawMin": "",
+         "RawValue": "1890.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      },
+      {
+       "id": 0,
+       "Text": "Powers",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "GPU Package",
+         "Min": "",
+         "Value": "205,5 W",
+         "Max": "",
+         "SensorId": "/gpu-nvidia/0/power/0",
+         "Type": "Power",
+         "RawMin": "",
+         "RawValue": "205.5",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      },
+      {
+       "id": 0,
+       "Text": "Fans",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "GPU Fan 1",
+         "Min": "",
+         "Value": "1450,0 RPM",
+         "Max": "",
+         "SensorId": "/gpu-nvidia/0/fan/1",
+         "Type": "Fan",
+         "RawMin": "",
+         "RawValue": "1450.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      },
+      {
+       "id": 0,
+       "Text": "Data",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "GPU Memory Used",
+         "Min": "",
+         "Value": "5120,0 MB",
+         "Max": "",
+         "SensorId": "/gpu-nvidia/0/smalldata/1",
+         "Type": "SmallData",
+         "RawMin": "",
+         "RawValue": "5120.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        },
+        {
+         "id": 0,
+         "Text": "GPU Memory Total",
+         "Min": "",
+         "Value": "8192,0 MB",
+         "Max": "",
+         "SensorId": "/gpu-nvidia/0/smalldata/2",
+         "Type": "SmallData",
+         "RawMin": "",
+         "RawValue": "8192.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

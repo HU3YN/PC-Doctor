@@ -1,0 +1,6 @@
+Application,ProcessID,SwapChainAddress,PresentRuntime,SyncInterval,PresentFlags,AllowsTearing,PresentMode,FrameType,TimeInSeconds,MsBetweenSimulationStart,MsBetweenPresents,MsBetweenDisplayChange,MsInPresentAPI,MsRenderPresentLatency,MsUntilDisplayed,MsGPUBusy,MsCPUBusy
+dwm.exe,100,0xB,DXGI,0,0,1,Hardware: Independent Flip,Application,0.0000,NA,6.90,6.90,0.10,4.00,8.00,5.50,3.20
+Game.exe,101,0xB,DXGI,0,0,1,Hardware: Independent Flip,Application,0.0100,NA,6.90,6.90,0.10,4.00,8.00,5.50,3.20
+chrome.exe,102,0xB,DXGI,0,0,1,Hardware: Independent Flip,Application,0.0200,NA,6.90,6.90,0.10,4.00,8.00,5.50,3.20
+Game.exe,100,0xB,DXGI,0,0,1,Hardware: Independent Flip,Application,0.0300,NA,6.90,6.90,0.10,4.00,8.00,5.50,3.20
+Game.exe,101,0xB,DXGI,0,0,1,Hardware: Independent Flip,Application,0.0400,NA,6.90,6.90,0.10,4.00,8.00,5.50,3.20

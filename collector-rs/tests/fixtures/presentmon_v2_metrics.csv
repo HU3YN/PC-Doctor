@@ -1,0 +1,5 @@
+Application,ProcessID,SwapChainAddress,PresentRuntime,SyncInterval,PresentFlags,AllowsTearing,PresentMode,FrameType,CPUStartTime,FrameTime,CPUBusy,CPUWait,GPULatency,GPUTime,GPUBusy,GPUWait,DisplayLatency,DisplayedTime
+Game.exe,20,0xB,DXGI,0,0,1,Hardware: Independent Flip,Application,12.5000,7.00,3.00,4.00,1.00,5.00,5.00,0.00,9.00,7.00
+explorer.exe,20,0xB,DXGI,0,0,1,Hardware: Independent Flip,Application,19.5000,7.00,3.00,4.00,1.00,5.00,5.00,0.00,9.00,7.00
+Game.exe,20,0xB,DXGI,0,0,1,Hardware: Independent Flip,Application,26.5000,7.00,3.00,4.00,1.00,5.00,5.00,0.00,9.00,7.00
+Game.exe,20,0xB,DXGI,0,0,1,Hardware: Independent Flip,Application,33.5000,7.00,3.00,4.00,1.00,5.00,5.00,0.00,9.00,7.00

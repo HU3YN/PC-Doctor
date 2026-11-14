@@ -136,6 +136,38 @@ jobs:
         working-directory: ml/leds
         run: python -m pytest -q
 
+  collector-rs:
+    name: rust capture collector (linux)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: collector-rs
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup component add rustfmt clippy
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: The analyzer reads what pcdoctor-capture wrote
+        run: |
+          python -m venv ../.venv && ../.venv/bin/pip install -q -e ../workers
+          bash scripts/check-with-analyzer.sh
+
+  collector-rs-windows:
+    name: rust capture collector (real Windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: collector-rs
+    steps:
+      - uses: actions/checkout@v5
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+
   web:
     name: dashboard
     runs-on: ubuntu-latest

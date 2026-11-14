@@ -1,0 +1,59 @@
+[package]
+name = "pcdoctor-capture"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "PC Doctor capture collector: frame times (PresentMon) and sensors (LibreHardwareMonitor) in the PC Doctor run format. Read-only."
+publish = false
+
+# One package, two targets: the library (src/lib.rs) holds all the logic so it
+# can be unit-tested on Linux; the binary (src/main.rs) only wires it together.
+[lib]
+name = "pcdoctor_capture"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pcdoctor-capture"
+path = "src/main.rs"
+
+[dependencies]
+# Command-line flags.
+clap = { version = "4", features = ["derive"] }
+# manifest.json, sensors_raw.json and LibreHardwareMonitor's data.json.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The run zip. Only deflate: no encryption, no other compressors.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+# UTC times for the manifest, local time for the run folder name (as the
+# PowerShell collector does).
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# run_id.
+uuid = { version = "1", features = ["v4"] }
+# LibreHardwareMonitor's web server is plain HTTP on localhost, so no TLS
+# support is compiled in.
+ureq = { version = "2", default-features = false }
+# Number parsing of formatted sensor values and the label scrubber.
+regex = "1"
+
+[target.'cfg(unix)'.dependencies]
+# getrusage(): our own CPU time and peak memory on Linux/macOS (for tests).
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# GetProcessTimes / GetProcessMemoryInfo: our own CPU time and peak memory.
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+# A small, fast binary for a USB stick. No panic=abort: a panic should still
+# unwind and close files.
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

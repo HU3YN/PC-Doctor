@@ -1,0 +1,6 @@
+Application,ProcessID,SwapChainAddress,Runtime,SyncInterval,PresentFlags,AllowsTearing,PresentMode,Dropped,TimeInSeconds,msBetweenPresents,msBetweenDisplayChange,msInPresentAPI,msUntilRenderComplete,msUntilDisplayed
+Game.exe,20,0x14,DXGI,1,0,0,Hardware: Independent Flip,0,0.0000,7.10,7.10,0.20,5.00,9.00
+dwm.exe,10,0xA,DXGI,1,0,0,Hardware: Independent Flip,0,0.1000,7.10,7.10,0.20,5.00,9.00
+Game.exe,20,0x14,DXGI,1,0,0,Hardware: Independent Flip,0,0.2000,7.10,7.10,0.20,5.00,9.00
+Game.exe,20,0x14,DXGI,1,0,0,Hardware: Independent Flip,0,0.3000,7.10,7.10,0.20,5.00,9.00
+dwm.exe,10,0xA,DXGI,1,0,0,Hardware: Independent Flip,0,0.4000,7.10,7.10,0.20,5.00,9.00

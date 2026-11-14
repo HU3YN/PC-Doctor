@@ -1,0 +1,277 @@
+{
+ "id": 0,
+ "Text": "Sensor",
+ "Min": "",
+ "Value": "",
+ "Max": "",
+ "ImageURL": "",
+ "Children": [
+  {
+   "id": 0,
+   "Text": "BENCH-PC",
+   "Min": "",
+   "Value": "",
+   "Max": "",
+   "ImageURL": "",
+   "Children": [
+    {
+     "id": 0,
+     "Text": "AMD Ryzen 7 5800X",
+     "Min": "",
+     "Value": "",
+     "Max": "",
+     "HardwareId": "/amdcpu/0",
+     "ImageURL": "",
+     "Children": [
+      {
+       "id": 0,
+       "Text": "Temperatures",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "Core (Tctl/Tdie)",
+         "Min": "",
+         "Value": "81,0 °C",
+         "Max": "",
+         "SensorId": "/amdcpu/0/temperature/2",
+         "Type": "Temperature",
+         "RawMin": "",
+         "RawValue": "81.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      },
+      {
+       "id": 0,
+       "Text": "Load",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "CPU Total",
+         "Min": "",
+         "Value": "41,0 %",
+         "Max": "",
+         "SensorId": "/amdcpu/0/load/0",
+         "Type": "Load",
+         "RawMin": "",
+         "RawValue": "41.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        },
+        {
+         "id": 0,
+         "Text": "CPU Core #1",
+         "Min": "",
+         "Value": "93,0 %",
+         "Max": "",
+         "SensorId": "/amdcpu/0/load/1",
+         "Type": "Load",
+         "RawMin": "",
+         "RawValue": "93.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        },
+        {
+         "id": 0,
+         "Text": "CPU Core #2",
+         "Min": "",
+         "Value": "50,0 %",
+         "Max": "",
+         "SensorId": "/amdcpu/0/load/2",
+         "Type": "Load",
+         "RawMin": "",
+         "RawValue": "50.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      },
+      {
+       "id": 0,
+       "Text": "Clocks",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "Cores (Average)",
+         "Min": "",
+         "Value": "4550,0 MHz",
+         "Max": "",
+         "SensorId": "/amdcpu/0/clock/1",
+         "Type": "Clock",
+         "RawMin": "",
+         "RawValue": "4550.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      },
+      {
+       "id": 0,
+       "Text": "Powers",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "Package",
+         "Min": "",
+         "Value": "110,0 W",
+         "Max": "",
+         "SensorId": "/amdcpu/0/power/0",
+         "Type": "Power",
+         "RawMin": "",
+         "RawValue": "110.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": 0,
+     "Text": "Generic Memory",
+     "Min": "",
+     "Value": "",
+     "Max": "",
+     "HardwareId": "/ram",
+     "ImageURL": "",
+     "Children": [
+      {
+       "id": 0,
+       "Text": "Load",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "Memory",
+         "Min": "",
+         "Value": "61,0 %",
+         "Max": "",
+         "SensorId": "/ram/load/0",
+         "Type": "Load",
+         "RawMin": "",
+         "RawValue": "61.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": 0,
+     "Text": "AMD Radeon RX 6800",
+     "Min": "",
+     "Value": "",
+     "Max": "",
+     "HardwareId": "/gpu-amd/0",
+     "ImageURL": "",
+     "Children": [
+      {
+       "id": 0,
+       "Text": "Temperatures",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "GPU Core",
+         "Min": "",
+         "Value": "74,0 °C",
+         "Max": "",
+         "SensorId": "/gpu-amd/0/temperature/0",
+         "Type": "Temperature",
+         "RawMin": "",
+         "RawValue": "74.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        },
+        {
+         "id": 0,
+         "Text": "GPU Hot Spot",
+         "Min": "",
+         "Value": "88,0 °C",
+         "Max": "",
+         "SensorId": "/gpu-amd/0/temperature/1",
+         "Type": "Temperature",
+         "RawMin": "",
+         "RawValue": "88.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      },
+      {
+       "id": 0,
+       "Text": "Load",
+       "Min": "",
+       "Value": "",
+       "Max": "",
+       "ImageURL": "",
+       "Children": [
+        {
+         "id": 0,
+         "Text": "GPU Core",
+         "Min": "",
+         "Value": "99,0 %",
+         "Max": "",
+         "SensorId": "/gpu-amd/0/load/0",
+         "Type": "Load",
+         "RawMin": "",
+         "RawValue": "99.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        },
+        {
+         "id": 0,
+         "Text": "GPU Memory",
+         "Min": "",
+         "Value": "55,0 %",
+         "Max": "",
+         "SensorId": "/gpu-amd/0/load/1",
+         "Type": "Load",
+         "RawMin": "",
+         "RawValue": "55.0",
+         "RawMax": "",
+         "ImageURL": "",
+         "Children": []
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
