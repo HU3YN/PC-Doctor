@@ -187,10 +187,44 @@ def test_only_the_pinned_presentmon_is_shipped_with_the_collector(client, monkey
     monkeypatch.setenv("PCDOCTOR_COLLECTOR_DIR", str(folder))
     get_settings.cache_clear()
 
-    response = client.get("/api/collector.zip")
+    # PresentMon is never in the main zip (it must match the attested release)...
+    with zipfile.ZipFile(io.BytesIO(client.get("/api/collector.zip").content)) as archive:
+        assert not [n for n in archive.namelist() if "/tools/" in n]
+    # ...but in its own download, and only the pinned file.
+    response = client.get("/api/collector/presentmon.zip")
     with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
-        tools = [n for n in archive.namelist() if "/tools/" in n]
-    assert tools == ["PCDoctor-collector/tools/PresentMon-2.6.0-x64.exe"]
+        assert archive.namelist() == ["PCDoctor-collector/tools/PresentMon-2.6.0-x64.exe"]
+    assert client.get("/api/collector").json()["includes_presentmon"] is True
+
+    (folder / "tools" / "PresentMon-2.6.0-x64.exe").write_bytes(b"swapped")
+    assert client.get("/api/collector/presentmon.zip").status_code == 404
+    assert client.get("/api/collector").json()["includes_presentmon"] is False
+
+
+def test_the_collector_zip_is_the_same_bytes_every_time(client, tmp_path):
+    import hashlib
+    import shutil
+    import time
+    from pathlib import Path
+
+    from pcdoctor_api.services import collector_build
+
+    source = Path(__file__).resolve().parents[2] / "collector"
+    first = client.get("/api/collector.zip").content
+    time.sleep(1.1)  # a zip that stored the time would differ now
+    assert client.get("/api/collector.zip").content == first
+    assert client.get("/api/collector").json()["sha256"] == hashlib.sha256(first).hexdigest()
+    # The same files with Windows line endings (a checkout on Windows) give the same bytes.
+    crlf = tmp_path / "crlf"
+    shutil.copytree(source, crlf, ignore=shutil.ignore_patterns("tools", "runs", "tests"))
+    for path in crlf.iterdir():
+        if path.is_file():
+            path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    assert collector_build.collector_zip(crlf) == first
+    # And the command-line build the release workflow runs writes them too.
+    out = tmp_path / "dist" / "PCDoctor-collector.zip"
+    assert collector_build.main(["build", str(source), str(out)]) == 0
+    assert out.read_bytes() == first
 
 
 def test_only_jpeg_png_and_webp_are_decoded():

@@ -24,6 +24,28 @@ The console also prints the red flags straight away (blue-screen stop codes,
 unexpected shutdowns, disk errors), so you get something even with no
 dashboard to hand.
 
+## Check your copy before running it
+
+The collector asks for administrator rights, so make sure it is the real
+one. Each collector release on GitHub (tags `collector-v...`) has an
+attestation: a signed record that GitHub's release workflow built that exact
+file from this repository.
+
+```bash
+gh attestation verify PCDoctor-collector.zip --repo HU3YN/PC-Doctor
+```
+
+Without `gh`, compare the file's hash with the one on the release page (open
+the page over HTTPS yourself, not through a link from somewhere else):
+
+```powershell
+Get-FileHash .\PCDoctor-collector.zip -Algorithm SHA256
+```
+
+A PC Doctor server serves the same bytes for the same version, and its **Get
+the collector** page shows the hash. PresentMon is a separate download; the
+collector runs it only if it carries Intel's signature.
+
 ## For a capture: two free tools
 
 | For | Tool | Set-up |

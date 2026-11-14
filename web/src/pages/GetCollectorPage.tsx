@@ -52,11 +52,33 @@ export function GetCollectorPage() {
           </li>
         </ol>
         {info.data && (
-          <p className="muted small" style={{ marginTop: 10 }}>
-            {info.data.includes_presentmon
-              ? "This download includes PresentMon, so frame-time captures work straight away."
-              : "This download does not include PresentMon (needed for frame times). Run Get-Tools.ps1 once on this computer and download again, and it will travel with the stick."}
-          </p>
+          <div className="muted small stack" style={{ marginTop: 10, gap: 6 }}>
+            {info.data.includes_presentmon ? (
+              <p>
+                For frame-time captures, also download{" "}
+                <a href="/api/collector/presentmon.zip" download>
+                  PresentMon
+                </a>{" "}
+                (Intel&apos;s frame-time recorder) and unpack it onto the same stick: it goes into the
+                collector&apos;s <code>tools</code> folder. The collector checks Intel&apos;s signature
+                before running it.
+              </p>
+            ) : (
+              <p>
+                PresentMon (needed for frame times) is not on this computer. Run{" "}
+                <code>Get-Tools.ps1</code> once, on the stick or here, and it is fetched and checked.
+              </p>
+            )}
+            {info.data.sha256 && (
+              <p>
+                SHA-256 of the collector zip:{" "}
+                <code style={{ wordBreak: "break-all" }}>{info.data.sha256}</code>. It is the same file as
+                the collector release on GitHub for this version; check a copy with{" "}
+                <code>gh attestation verify PCDoctor-collector.zip --repo HU3YN/PC-Doctor</code> or by
+                comparing this hash with the release page.
+              </p>
+            )}
+          </div>
         )}
       </div>
 
