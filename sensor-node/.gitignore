@@ -1,0 +1,18 @@
+# Wi-Fi name, password and receiver address live here. Never commit it.
+firmware/include/secrets.h
+
+# PlatformIO build output and downloaded toolchains
+firmware/.pio/
+firmware/.vscode/
+
+# Host test build output
+firmware/test_host/build/
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+# Readings written by the receiver
+*.csv

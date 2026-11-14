@@ -1,0 +1,5 @@
+file,stop_code,source,notes
+bsod-desktop-01.jpg,0x124,LCD monitor,straight on with room lights on
+bsod-laptop-02.jpg,0xEF,laptop screen,taken at an angle with some glare
+bsod-old-03.jpg,0x7B,LCD monitor,Windows 7 style screen showing the number only
+boot-menu-04.jpg,,BIOS screen,no stop code on this screen - the reader must report nothing

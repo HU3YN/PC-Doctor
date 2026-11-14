@@ -1,0 +1,7 @@
+# Everything the fuzzers write while running. None of it belongs in git.
+.venv/
+.hypothesis/
+.pytest_cache/
+__pycache__/
+corpus/
+crashes/

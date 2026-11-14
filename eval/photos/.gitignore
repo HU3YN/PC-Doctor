@@ -1,0 +1,7 @@
+# Photos of customers' screens stay on this computer. Everything in this
+# folder is ignored except the three files below - including labels.csv,
+# whose notes describe photos nobody else can see.
+*
+!.gitignore
+!README.md
+!labels.example.csv
