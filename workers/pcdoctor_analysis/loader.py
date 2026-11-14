@@ -61,6 +61,15 @@ class RunData:
         return out
 
 
+def _clean_event(event: dict[str, Any]) -> dict[str, Any]:
+    """An event id is a whole number. Anything else (a list, a string, true)
+    becomes None, so the rules can look ids up in their tables safely."""
+    event_id = event.get("id")
+    if event_id is not None and (isinstance(event_id, bool) or not isinstance(event_id, int)):
+        event = {**event, "id": None}
+    return event
+
+
 def parse_time(value: Any) -> datetime | None:
     """Parse an ISO-8601 time; None when missing or unreadable."""
     if not isinstance(value, str) or not value.strip():
@@ -139,7 +148,9 @@ def load_run_dir(path: str | Path) -> RunData:
     events_doc = _read_json(root / "events.json", notes)
     if isinstance(events_doc, dict):
         run.events_collected = True
-        run.events = [e for e in _as_list(events_doc.get("events")) if isinstance(e, dict)]
+        run.events = [
+            _clean_event(e) for e in _as_list(events_doc.get("events")) if isinstance(e, dict)
+        ]
         window = events_doc.get("window_days")
         run.event_window_days = window if isinstance(window, int) else None
         for error in _as_list(events_doc.get("errors")):

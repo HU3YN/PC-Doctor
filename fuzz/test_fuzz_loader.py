@@ -13,15 +13,13 @@ crash". So for ANY bytes in the files of a run folder:
 
 from __future__ import annotations
 
-from hypothesis import given
-from hypothesis import strategies as st
-from pcdoctor_analysis import analyze_run_dir, load_run_dir
-from pcdoctor_analysis.loader import RunData
-
 import known_bugs
 import strategies
 from harness import STRICT, check_result, rule_errors, sandbox, tolerate
-from hypothesis import event
+from hypothesis import event, given
+from hypothesis import strategies as st
+from pcdoctor_analysis import analyze_run_dir, load_run_dir
+from pcdoctor_analysis.loader import RunData
 
 
 def check_run_folder(files: dict[str, bytes]) -> None:
@@ -75,6 +73,10 @@ def test_loader_with_hostile_json_and_csv(
     check_run_folder(files)
 
 
-@given(st.dictionaries(st.sampled_from(sorted(strategies.RUN_FILES)), st.binary(max_size=300)))
+@given(
+    st.dictionaries(
+        st.sampled_from(sorted(strategies.RUN_FILES)), st.binary(max_size=300)
+    )
+)
 def test_loader_with_random_bytes(files: dict[str, bytes]) -> None:
     check_run_folder(files)

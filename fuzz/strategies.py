@@ -20,7 +20,7 @@ import json
 import struct
 import zlib
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache, lru_cache
 from typing import Any
 
 from hypothesis import strategies as st
@@ -65,7 +65,7 @@ def seed_documents() -> dict[str, tuple[Any, ...]]:
     return {name: tuple(docs) for name, docs in out.items()}
 
 
-@lru_cache(maxsize=None)
+@cache
 def seed_csv(name: str) -> tuple[str, ...]:
     """The first lines of every seed CSV of one kind (short, so tests stay fast)."""
     found = []
@@ -154,7 +154,9 @@ def _replace(value: Any, path: tuple, new: Any) -> Any:
         return new
     head, rest = path[0], path[1:]
     if isinstance(value, dict):
-        return {k: (_replace(v, rest, new) if k == head else v) for k, v in value.items()}
+        return {
+            k: (_replace(v, rest, new) if k == head else v) for k, v in value.items()
+        }
     return [(_replace(v, rest, new) if i == head else v) for i, v in enumerate(value)]
 
 
@@ -250,7 +252,9 @@ HOSTILE_CELLS: tuple[str, ...] = (
 
 cell = st.one_of(
     st.sampled_from(HOSTILE_CELLS),
-    st.floats(allow_nan=False, allow_infinity=False, width=32).map(lambda f: f"{f:.4f}"),
+    st.floats(allow_nan=False, allow_infinity=False, width=32).map(
+        lambda f: f"{f:.4f}"
+    ),
     st.floats().map(repr),
     st.integers(-5, 200).map(str),
     st.text(max_size=12),
@@ -295,7 +299,9 @@ SENSOR_COLUMNS = (
 
 
 @st.composite
-def csv_table(draw: st.DrawFn, columns: tuple[str, ...], must_have: tuple[str, ...]) -> str:
+def csv_table(
+    draw: st.DrawFn, columns: tuple[str, ...], must_have: tuple[str, ...]
+) -> str:
     """A table with a plausible header and hostile cells.
 
     Rows may be shorter or longer than the header, and a column name may be
@@ -303,12 +309,16 @@ def csv_table(draw: st.DrawFn, columns: tuple[str, ...], must_have: tuple[str, .
     """
     header = list(draw(st.lists(st.sampled_from(columns), min_size=0, max_size=10)))
     if draw(st.booleans()):
-        header.insert(draw(st.integers(0, len(header))), draw(st.sampled_from(must_have)))
+        header.insert(
+            draw(st.integers(0, len(header))), draw(st.sampled_from(must_have))
+        )
     separator = draw(st.sampled_from([",", ",", ",", ";", "\t"]))
     newline = draw(st.sampled_from(["\n", "\r\n", "\r", "\n\n"]))
     width = st.integers(max(0, len(header) - 2), len(header) + 2)
     rows = draw(
-        st.lists(st.lists(cell, min_size=0, max_size=12).flatmap(_fit(width)), max_size=40)
+        st.lists(
+            st.lists(cell, min_size=0, max_size=12).flatmap(_fit(width)), max_size=40
+        )
     )
     lines = [separator.join(header)] + [separator.join(row) for row in rows]
     return draw(st.sampled_from(["", "\ufeff"])) + newline.join(lines) + newline
@@ -501,7 +511,9 @@ known_name = st.sampled_from(sorted(RUN_FILES)).map(str.encode)
 entry_name = st.builds(
     lambda prefix, name, upper: prefix + (name.upper() if upper else name),
     st.sampled_from(NAME_PREFIXES),
-    st.one_of(known_name, known_name, st.sampled_from(OTHER_NAMES), st.binary(max_size=20)),
+    st.one_of(
+        known_name, known_name, st.sampled_from(OTHER_NAMES), st.binary(max_size=20)
+    ),
     st.booleans(),
 )
 
@@ -531,7 +543,9 @@ def entry(draw: st.DrawFn) -> Entry:
         name=draw(entry_name),
         data=data,
         method=draw(st.sampled_from([8, 8, 8, 0, 0, 12, 14, 93, 99, 1, 65535])),
-        flags=draw(st.sampled_from([0, 0, 0, 0, 0x800, 0x1, 0x8, 0x41, 0x2000, 0xFFFF])),
+        flags=draw(
+            st.sampled_from([0, 0, 0, 0, 0x800, 0x1, 0x8, 0x41, 0x2000, 0xFFFF])
+        ),
         declared_size=draw(
             st.sampled_from([None, None, None, 0, 1, len(data) + 1, 0xFFFFFFFF, 2**31])
         ),
@@ -544,7 +558,11 @@ def entry(draw: st.DrawFn) -> Entry:
 @st.composite
 def honest_entry(draw: st.DrawFn) -> Entry:
     """An entry with a hostile name and content, but a well-formed zip record."""
-    return Entry(name=draw(entry_name), data=draw(entry_data), method=draw(st.sampled_from([8, 0])))
+    return Entry(
+        name=draw(entry_name),
+        data=draw(entry_data),
+        method=draw(st.sampled_from([8, 0])),
+    )
 
 
 @st.composite
@@ -562,7 +580,9 @@ def hostile_zip(draw: st.DrawFn) -> bytes:
         # Around the 200-entry limit, with a few real run files among them.
         total = draw(st.integers(195, 230))
         real = draw(st.lists(honest_entry(), min_size=0, max_size=4))
-        filler = [Entry(name=b"filler-%d.txt" % i, data=b"x", method=0) for i in range(total)]
+        filler = [
+            Entry(name=b"filler-%d.txt" % i, data=b"x", method=0) for i in range(total)
+        ]
         return raw_zip(filler[: max(0, total - len(real))] + real)
     # "damaged": a good zip with bytes flipped, cut off, or glued together.
     good = bytearray(raw_zip(draw(st.lists(honest_entry(), min_size=1, max_size=4))))
@@ -598,9 +618,13 @@ def run_zip(draw: st.DrawFn) -> bytes:
         if draw(st.booleans()):
             files[name] = draw(json_file(name))
     if draw(st.booleans()):
-        files["presentmon.csv"] = draw(presentmon_text()).encode("utf-8", errors="replace")
+        files["presentmon.csv"] = draw(presentmon_text()).encode(
+            "utf-8", errors="replace"
+        )
     if draw(st.booleans()):
         files["sensors.csv"] = draw(sensors_text()).encode("utf-8", errors="replace")
     if not files:
         files["manifest.json"] = draw(json_file("manifest.json"))
-    return raw_zip([Entry(name=name.encode(), data=data) for name, data in files.items()])
+    return raw_zip(
+        [Entry(name=name.encode(), data=data) for name, data in files.items()]
+    )

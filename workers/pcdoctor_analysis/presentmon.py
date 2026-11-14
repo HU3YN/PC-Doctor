@@ -60,6 +60,11 @@ SHELL_PROCESSES = frozenset(
 
 LEVEL_SHIFT_FRAMES = 3
 MAX_ROWS = 2_000_000  # ~2.3 hours at 240 fps; a guard, not a real limit
+# A frame time outside these bounds is not a measurement: 0.001 ms would be a
+# million frames a second (1000 / 5e-324 is infinity), and a single frame of
+# more than an hour is a broken clock. Sums of such values overflow to inf.
+MIN_FRAME_TIME_MS = 0.001
+MAX_FRAME_TIME_MS = 3_600_000.0
 
 
 class PresentMonError(ValueError):
@@ -124,6 +129,15 @@ def parse_presentmon_csv(
 
 
 def _parse(handle: Any, target_process: str | None) -> FrameData:
+    try:
+        return _parse_rows(handle, target_process)
+    except csv.Error as error:
+        # A damaged file (for example one field over the csv module's size
+        # limit) is "not a usable capture", not a crash.
+        raise PresentMonError(f"The PresentMon file is damaged ({error}).") from None
+
+
+def _parse_rows(handle: Any, target_process: str | None) -> FrameData:
     reader = csv.reader(handle)
     try:
         raw_header = next(reader)
@@ -204,8 +218,8 @@ def _parse(handle: Any, target_process: str | None) -> FrameData:
 
     for row in rows:
         ft = _to_float(row[i_ft])
-        if ft is None or ft <= 0:
-            skipped += 1  # the first frame of a capture has no previous present
+        if ft is None or not MIN_FRAME_TIME_MS <= ft <= MAX_FRAME_TIME_MS:
+            skipped += 1  # unusable; the first frame of a capture has no previous present
             continue
         frame_times.append(ft)
         times.append(_to_float(row[i_time]) if i_time is not None and i_time < len(row) else None)

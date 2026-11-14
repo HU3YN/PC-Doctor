@@ -14,6 +14,8 @@ import io
 import json
 import math
 
+import strategies
+from harness import tolerate
 from hypothesis import given
 from hypothesis import strategies as st
 from pcdoctor_analysis.presentmon import (
@@ -23,9 +25,6 @@ from pcdoctor_analysis.presentmon import (
     parse_presentmon_csv,
 )
 from pcdoctor_analysis.series import frame_series
-
-import strategies
-from harness import tolerate
 
 
 def check_presentmon(text: str, target: str | None) -> None:
@@ -55,7 +54,10 @@ def check_presentmon(text: str, target: str | None) -> None:
     assert stats["spike_count"] >= stats["hitch_count"] >= 0
 
 
-@given(strategies.presentmon_text(), st.one_of(st.none(), st.sampled_from(["game", "dwm.exe", ""])))
+@given(
+    strategies.presentmon_text(),
+    st.one_of(st.none(), st.sampled_from(["game", "dwm.exe", ""])),
+)
 def test_presentmon_parser(text: str, target: str | None) -> None:
     check_presentmon(text, target)
 

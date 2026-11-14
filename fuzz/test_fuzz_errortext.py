@@ -15,12 +15,11 @@ import json
 import re
 import time
 
+from harness import tolerate
 from hypothesis import given
 from hypothesis import strategies as st
 from pcdoctor_analysis.errortext import ErrorReading, interpret
 from pcdoctor_analysis.stopcodes import STOP_CODES
-
-from harness import tolerate
 
 NAMES = sorted(entry.name for entry in STOP_CODES.values())
 
@@ -76,7 +75,9 @@ def check_reading(text: str) -> ErrorReading | None:
     # An unknown code is only reported if a hex number is really in the text.
     for code in reading.unknown_codes:
         assert re.fullmatch(r"0x[0-9A-F]+", code), code
-        assert re.search(r"0[xX]", text), "an unknown code was reported with no 0x in the text"
+        assert re.search(r"0[xX]", text), (
+            "an unknown code was reported with no 0x in the text"
+        )
     # A driver name is only reported if it is really in the text.
     for driver in reading.drivers:
         assert driver.lower() in text.lower()
@@ -100,11 +101,15 @@ def test_interpret(text: str) -> None:
 
 
 @given(
-    st.sampled_from(["0x" * 1, "stop code ", "a.sys ", "A_", "what failed: ", "0xO", "- ", "_"]),
+    st.sampled_from(
+        ["0x" * 1, "stop code ", "a.sys ", "A_", "what failed: ", "0xO", "- ", "_"]
+    ),
     st.integers(1, 4000),
     st.text(max_size=10),
 )
-def test_interpret_is_fast_on_long_repetitive_text(piece: str, repeats: int, tail: str) -> None:
+def test_interpret_is_fast_on_long_repetitive_text(
+    piece: str, repeats: int, tail: str
+) -> None:
     # The API keeps at most 4000 characters of OCR text, but interpret() gets
     # the full text first, so test well past that.
     text = piece * repeats + tail

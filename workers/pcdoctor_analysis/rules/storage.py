@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from ..loader import RunData
@@ -12,14 +13,15 @@ GB = 1024**3
 
 
 def _number(value: Any) -> float | None:
+    """A finite number, or None. JSON from a stranger can hold 1e999 or a
+    300-digit integer; neither may reach a rule or the stored result."""
     if isinstance(value, bool) or value is None:
         return None
-    if isinstance(value, (int, float)):
-        return float(value)
     try:
-        return float(str(value).strip())
-    except ValueError:
+        number = float(value) if isinstance(value, (int, float)) else float(str(value).strip())
+    except (ValueError, OverflowError):
         return None
+    return number if math.isfinite(number) else None
 
 
 def _disks(run: RunData) -> list[dict[str, Any]]:

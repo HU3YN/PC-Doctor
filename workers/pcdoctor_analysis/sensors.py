@@ -8,6 +8,7 @@ counters). A column the PC could not provide is simply empty.
 from __future__ import annotations
 
 import csv
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -83,17 +84,28 @@ def _number(text: str | None) -> float | None:
         value = float(text)
     except ValueError:
         return None
-    return value if value == value else None  # drop NaN
+    return value if math.isfinite(value) else None  # drop NaN and inf
 
 
 def parse_sensors_csv(path: str | Path) -> SensorData:
+    """Read sensors.csv. A damaged file raises ValueError (or OSError)."""
+    try:
+        return _parse_sensors(path)
+    except csv.Error as error:
+        # For example a field over the csv module's size limit.
+        raise ValueError(f"the file is damaged: {error}") from None
+
+
+def _parse_sensors(path: str | Path) -> SensorData:
     elapsed: list[float] = []
     series: dict[str, list[float | None]] = {}
     dropped: dict[str, int] = {}
     with open(path, newline="", encoding="utf-8-sig", errors="replace") as handle:
         reader = csv.DictReader(handle)
         fields = [f.strip() for f in (reader.fieldnames or [])]
-        known = [f for f in fields if f in SENSOR_COLUMNS]
+        # A column named twice is read once (DictReader keeps one value
+        # per name), so every series has one value per sample.
+        known = list(dict.fromkeys(f for f in fields if f in SENSOR_COLUMNS))
         for column in known:
             series[column] = []
         for row_number, row in enumerate(reader):

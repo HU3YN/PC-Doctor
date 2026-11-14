@@ -13,11 +13,10 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import known_bugs
 from hypothesis import event
 from pcdoctor_analysis import AnalysisResult
 from pcdoctor_analysis.rules import all_rules
-
-import known_bugs
 
 STRICT = os.environ.get("PCDOCTOR_FUZZ_STRICT", "") not in ("", "0")
 
@@ -34,10 +33,16 @@ def _audit(name: str, args: tuple) -> None:
         return
     path, mode, flags = args[0], args[1], args[2]
     writing = (isinstance(mode, str) and any(c in mode for c in "wax+")) or (
-        isinstance(flags, int) and flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND)
+        isinstance(flags, int)
+        and flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND)
     )
     if writing and isinstance(path, (str, bytes, os.PathLike)):
-        _watching[-1].append(os.fsdecode(path))
+        decoded = os.fsdecode(path)
+        # Python itself caches compiled modules on first import; that is not
+        # the code under test writing.
+        if "__pycache__" in Path(decoded).parts:
+            return
+        _watching[-1].append(decoded)
 
 
 sys.addaudithook(_audit)
@@ -61,7 +66,11 @@ class Sandbox:
         }
 
     def folders(self) -> set[str]:
-        return {p.relative_to(self.root).as_posix() for p in self.root.rglob("*") if p.is_dir()}
+        return {
+            p.relative_to(self.root).as_posix()
+            for p in self.root.rglob("*")
+            if p.is_dir()
+        }
 
     def writes_outside(self, allowed: Path | None = None) -> list[str]:
         """Paths opened for writing that are not inside ``allowed`` (default: dest)."""
@@ -99,7 +108,9 @@ VERDICTS = {"critical", "warning", "ok"}
 
 def check_result(result: Any) -> None:
     """What must be true of every analysis result, whatever the input was."""
-    assert isinstance(result, AnalysisResult), f"not an AnalysisResult: {type(result)!r}"
+    assert isinstance(result, AnalysisResult), (
+        f"not an AnalysisResult: {type(result)!r}"
+    )
     assert result.verdict in VERDICTS, result.verdict
     assert isinstance(result.headline, str) and result.headline
     known_codes = {rule.code for rule in all_rules()}
@@ -116,7 +127,11 @@ def check_result(result: Any) -> None:
 
 def rule_errors(result: AnalysisResult) -> list[str]:
     """Checks that crashed inside the rules engine (it turns them into notes)."""
-    return [note for note in result.notes if note.startswith("Check '") and " failed: " in note]
+    return [
+        note
+        for note in result.notes
+        if note.startswith("Check '") and " failed: " in note
+    ]
 
 
 # --------------------------------------------------------------- known bugs

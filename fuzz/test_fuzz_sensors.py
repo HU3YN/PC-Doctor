@@ -15,6 +15,8 @@ import math
 import tempfile
 from pathlib import Path
 
+import strategies
+from harness import tolerate
 from hypothesis import given
 from hypothesis import strategies as st
 from pcdoctor_analysis.sensors import (
@@ -25,9 +27,6 @@ from pcdoctor_analysis.sensors import (
     summarize,
 )
 from pcdoctor_analysis.series import sensor_series
-
-import strategies
-from harness import tolerate
 
 
 def check_sensors(raw: bytes) -> None:

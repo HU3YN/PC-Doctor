@@ -1,0 +1,100 @@
+name: security
+
+# Known-vulnerable dependencies, leaked secrets, and the fuzz tests on a short
+# budget. Runs on every push, and weekly so new advisories show up even when
+# nothing changed. docs/threat-model.md lists what this does not cover.
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-deps:
+    name: python dependencies (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install what the API, the analysis and the bot need
+        run: pip install -e workers -e "api[ai,photo,queue]" -e bot pip-audit
+      # Our own packages are skipped: they are not on PyPI.
+      - run: pip-audit --skip-editable
+
+  npm-deps:
+    name: dashboard dependencies (npm audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      # Only what ships in the built dashboard; dev tools never reach a browser.
+      - run: npm audit --omit=dev --audit-level=high
+
+  go-deps:
+    name: upload service (govulncheck)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: upload-service
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: upload-service/go.mod
+          cache-dependency-path: upload-service/go.sum
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+      - run: govulncheck ./...
+
+  secrets:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # every commit, not just the last one
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+      - run: go install github.com/zricethezav/gitleaks/v8@v8.24.3
+      - run: ~/go/bin/gitleaks git --no-banner --redact --verbose .
+
+  fuzz:
+    name: fuzz tests (short budget)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            workers/pyproject.toml
+            api/pyproject.toml
+      - run: pip install -e "workers[dev]" -e "api[dev]"
+      - name: Parsers and the upload unpacker (Hypothesis, ci profile)
+        env:
+          PCDOCTOR_FUZZ_PROFILE: ci
+        run: pytest -c fuzz/pytest.ini fuzz
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: upload-service/go.mod
+          cache-dependency-path: upload-service/go.sum
+      - name: The Go upload checker
+        working-directory: upload-service
+        run: go test -run xxx -fuzz=FuzzCleanRun -fuzztime=30s .

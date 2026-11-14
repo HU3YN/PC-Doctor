@@ -40,3 +40,20 @@ def match(error: BaseException) -> KnownBug | None:
         if bug.exception == name and bug.message in text:
             return bug
     return None
+
+
+def match_note(note: str) -> KnownBug | None:
+    """Match a "Check '<title>' failed: <Type>: <message>" note from the rules engine.
+
+    The engine (workers/pcdoctor_analysis/rules/__init__.py, run_rules) catches
+    a crashing check and turns the exception into that note, so the note is
+    matched against the same type name and message piece as ``match``.
+    """
+    _, sep, rest = note.partition("' failed: ")
+    if not sep:
+        return None
+    name, _, text = rest.partition(": ")
+    for bug in KNOWN:
+        if bug.exception == name and bug.message in text:
+            return bug
+    return None

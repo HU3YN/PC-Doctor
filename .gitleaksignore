@@ -1,0 +1,3 @@
+# Findings checked by hand and known not to be secrets (one fingerprint per line).
+# bot/tests/test_core.py KEY: a made-up share key used as test data.
+dfaffe5766f95767fc96ec1a922de283f7c94f1d:bot/tests/test_core.py:generic-api-key:20

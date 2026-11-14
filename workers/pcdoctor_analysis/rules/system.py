@@ -3,6 +3,7 @@ battery, and memory that fills up during the run."""
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -18,14 +19,15 @@ DEFAULT_SPEEDS = {"DDR4": 2666, "DDR5": 4800}
 
 
 def _number(value: Any) -> float | None:
+    """A finite number, or None. JSON from a stranger can hold 1e999 or a
+    300-digit integer; neither may reach a rule or the stored result."""
     if isinstance(value, bool) or value is None:
         return None
-    if isinstance(value, (int, float)):
-        return float(value)
     try:
-        return float(str(value).strip())
-    except ValueError:
+        number = float(value) if isinstance(value, (int, float)) else float(str(value).strip())
+    except (ValueError, OverflowError):
         return None
+    return number if math.isfinite(number) else None
 
 
 # What firmware writes when nobody filled a field in.

@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import hashlib
 import io
+import lzma
 import tempfile
 import time
 import zipfile
+import zlib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -41,6 +43,22 @@ RUN_FILES = frozenset(
 MAX_ARCHIVE_ENTRIES = 200
 CHUNK = 1024 * 1024
 
+# What zipfile raises on a damaged or hostile archive, besides BadZipFile: a
+# name that is not valid UTF-8 (UnicodeDecodeError, a ValueError), an
+# unsupported compression method or encryption (NotImplementedError),
+# compressed bytes that do not decompress (zlib.error, lzma.LZMAError, OSError
+# from bz2) or that stop early (EOFError).
+_ZIP_ERRORS = (
+    zipfile.BadZipFile,
+    ValueError,
+    NotImplementedError,
+    RuntimeError,
+    EOFError,
+    OSError,
+    zlib.error,
+    lzma.LZMAError,
+)
+
 
 class UploadError(ValueError):
     """The upload cannot be used. The message is safe to show to the user."""
@@ -67,18 +85,24 @@ def _looks_like_presentmon_csv(data: bytes) -> bool:
 def unpack(data: bytes, destination: Path, settings: Settings) -> list[str]:
     """Write the run's known files into ``destination``; return their names."""
     limit = settings.max_unpacked_mb * 1024 * 1024
+    too_big = UploadError(
+        f"The run unpacks to more than {settings.max_unpacked_mb} MB, which is over the limit."
+    )
     if not _is_zip(data):
         if _looks_like_presentmon_csv(data):
+            if len(data) > limit:
+                raise too_big
             (destination / "presentmon.csv").write_bytes(data)
             return ["presentmon.csv"]
         raise UploadError(
             "This is not a PC Doctor run. Upload the .zip the collector made, "
             "or a PresentMon .csv file."
         )
+    damaged = UploadError("The zip file is damaged and cannot be opened.")
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
-    except zipfile.BadZipFile:
-        raise UploadError("The zip file is damaged and cannot be opened.") from None
+    except _ZIP_ERRORS:
+        raise damaged from None
 
     with archive:
         entries = archive.infolist()
@@ -105,23 +129,29 @@ def unpack(data: bytes, destination: Path, settings: Settings) -> list[str]:
                 "specs.json, events.json, ...)."
             )
         if sum(info.file_size for info in chosen.values()) > limit:
-            raise UploadError(
-                f"The run unpacks to more than {settings.max_unpacked_mb} MB, which is over "
-                "the limit."
-            )
+            raise too_big
+        if any(info.flag_bits & 0x1 for info in chosen.values()):
+            raise UploadError("The zip is password-protected.")
         written = 0
         for name, info in chosen.items():
-            if info.flag_bits & 0x1:
-                raise UploadError("The zip is password-protected.")
             # The declared size can lie, so count the bytes actually read.
-            with archive.open(info) as source, open(destination / name, "wb") as target:
-                while chunk := source.read(CHUNK):
+            # Errors from reading the archive are the upload's fault; errors
+            # from writing the destination are ours and are not caught.
+            try:
+                source = archive.open(info)
+            except _ZIP_ERRORS:
+                raise damaged from None
+            with source, open(destination / name, "wb") as target:
+                while True:
+                    try:
+                        chunk = source.read(CHUNK)
+                    except _ZIP_ERRORS:
+                        raise damaged from None
+                    if not chunk:
+                        break
                     written += len(chunk)
                     if written > limit:
-                        raise UploadError(
-                            f"The run unpacks to more than {settings.max_unpacked_mb} MB, "
-                            "which is over the limit."
-                        )
+                        raise too_big
                     target.write(chunk)
     return sorted(chosen)
 
