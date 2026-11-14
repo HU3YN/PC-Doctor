@@ -1,3 +1,6 @@
 # Findings checked by hand and known not to be secrets (one fingerprint per line).
 # bot/tests/test_core.py KEY: a made-up share key used as test data.
 dfaffe5766f95767fc96ec1a922de283f7c94f1d:bot/tests/test_core.py:generic-api-key:20
+# collector/tests/Collector.Tests.ps1 share_key: a made-up key for the result-link tests.
+89f936faeb7d57869d3c719df5ee9396846903e9:collector/tests/Collector.Tests.ps1:generic-api-key:280
+89f936faeb7d57869d3c719df5ee9396846903e9:collector/tests/Collector.Tests.ps1:generic-api-key:293
