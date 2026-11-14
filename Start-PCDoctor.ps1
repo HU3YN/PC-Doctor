@@ -167,7 +167,7 @@ if ($Lan) {
     foreach ($address in (Get-LanAddresses)) {
         Write-Host "  From other PCs on this network:  http://${address}:$Port" -ForegroundColor Green
     }
-    Write-Host '  There are no logins yet: anyone on this network can open it. Trusted networks only.' -ForegroundColor Yellow
+    Write-Host '  It uses plain HTTP: anyone on this network can reach the sign-in page. Trusted networks only.' -ForegroundColor Yellow
     Write-Host '  If other PCs cannot connect, allow it through Windows Firewall when Windows asks.'
 } else {
     Write-Host '  Only this computer can open it. Start with -Lan to let other PCs on your network in.'

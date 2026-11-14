@@ -569,3 +569,27 @@ def test_troubleshooter_may_only_cite_findings_the_run_has(client, monkeypatch):
     body = client.post("/api/assist/troubleshoot", json={"run_id": run_id}).json()
     assert body["confidence"] == "low" and body["category"] == "other"
     assert client.post("/api/assist/troubleshoot", json={"run_id": "nope"}).status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("hops", "header", "expected"),
+    [
+        (1, "203.0.113.9", "203.0.113.9"),  # Compose: nginx added the caller
+        (2, "203.0.113.9, 10.42.0.7", "203.0.113.9"),  # k3s: Traefik, then nginx
+        (2, "6.6.6.6, 203.0.113.9, 10.42.0.7", "203.0.113.9"),  # a forged entry is ignored
+        (1, "6.6.6.6, 203.0.113.9", "203.0.113.9"),
+        (2, "203.0.113.9", "203.0.113.9"),  # fewer entries than hops
+    ],
+)
+def test_the_rate_limit_address_skips_only_our_own_proxies(hops, header, expected):
+    from types import SimpleNamespace
+
+    from pcdoctor_api.config import Settings
+    from pcdoctor_api.deps import client_key
+
+    request = SimpleNamespace(
+        headers={"x-forwarded-for": header}, client=SimpleNamespace(host="10.42.0.99")
+    )
+    settings = Settings(trust_proxy=True, proxy_hops=hops)
+    assert client_key(request, settings) == expected
+    assert client_key(request, Settings(trust_proxy=False)) == "10.42.0.99"

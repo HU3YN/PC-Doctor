@@ -33,9 +33,13 @@ def require_master(account: Annotated[Account, Depends(require_account)]) -> Acc
 def client_key(request: Request, settings: Annotated[Settings, Depends(get_settings)]) -> str:
     """Who to count a request against for rate limits: the caller's address."""
     if settings.trust_proxy:
-        forwarded = request.headers.get("x-forwarded-for", "")
+        forwarded = [part.strip() for part in request.headers.get("x-forwarded-for", "").split(",")]
+        forwarded = [part for part in forwarded if part]
         if forwarded:
-            return forwarded.split(",")[-1].strip()  # the entry our own proxy added
+            # Each of our proxies appended the address it saw. Counting from
+            # the right skips our own proxies; never read further left than
+            # that, because the caller can write whatever it likes there.
+            return forwarded[-min(settings.proxy_hops, len(forwarded))]
     return request.client.host if request.client else "unknown"
 
 

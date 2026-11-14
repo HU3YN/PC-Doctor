@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     # True when a reverse proxy we run (nginx in Docker Compose) sits in front
     # and sets X-Forwarded-For. Used only for rate limits.
     trust_proxy: bool = False
+    # How many proxies we run in front of the API, each adding one address to
+    # X-Forwarded-For. Docker Compose: 1 (nginx). k3s: 2 (Traefik, then nginx).
+    # The caller's address is that many places from the right; anything further
+    # left was sent by the caller and cannot be trusted.
+    proxy_hops: int = Field(default=1, ge=1, le=5)
     # Key for the AI helper (drafting work-log entries, describing photos).
     # Empty = the helper is switched off and everything else works as before.
     anthropic_api_key: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")

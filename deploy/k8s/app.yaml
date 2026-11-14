@@ -45,6 +45,10 @@ spec:
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef: {name: pcdoctor-secrets, key: anthropic-api-key, optional: true}
+            # Traefik, then nginx, each add an X-Forwarded-For entry. Without
+            # this every caller looked like Traefik and shared one rate limit,
+            # so anyone could lock the master out of signing in.
+            - {name: PCDOCTOR_PROXY_HOPS, value: "2"}
           ports:
             - containerPort: 8000
           readinessProbe:
