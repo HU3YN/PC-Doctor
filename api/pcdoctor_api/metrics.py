@@ -47,11 +47,20 @@ async def record_request(request: Request, call_next):  # noqa: ANN001, ANN201
             LATENCY.labels(request.method, route).observe(time.perf_counter() - started)
 
 
+# Values that once were defaults in this repository, or are guessed first.
+KNOWN_WEAK_TOKENS = {"local-metrics", "pcdoctor", "changeme", "metrics", "secret", "token"}
+
+
+def weak_token(token: str) -> bool:
+    """A metrics token anyone could guess turns metrics off rather than on."""
+    return len(token) < 16 or token.lower() in KNOWN_WEAK_TOKENS
+
+
 @router.get("/api/metrics", include_in_schema=False)
 def metrics(request: Request) -> Response:
     """For Prometheus only: needs the metrics token, and does not exist without one."""
     token = get_settings().metrics_token
-    if not token:
+    if not token or weak_token(token):
         raise HTTPException(status_code=404, detail="Not found.")
     given = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
     if not hmac.compare_digest(given.encode(), token.encode()):

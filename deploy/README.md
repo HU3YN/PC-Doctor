@@ -111,6 +111,7 @@ sudo k3s kubectl create namespace pcdoctor
 sudo k3s kubectl -n pcdoctor create secret generic pcdoctor-secrets \
   --from-literal=postgres-password="$(openssl rand -hex 24)" \
   --from-literal=metrics-token="$(openssl rand -hex 24)" \
+  --from-literal=redis-password="$(openssl rand -hex 24)" \
   --from-literal=grafana-password="$(openssl rand -hex 12)"
 ```
 

@@ -36,6 +36,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     auth_service.use_shared_limits(settings.redis_url)
     auth_service.bot_uploads.limit = settings.bot_uploads_per_hour
     live_service.use_redis(settings.redis_url)
+    if settings.metrics_token and metrics.weak_token(settings.metrics_token):
+        print(
+            "PC Doctor: PCDOCTOR_METRICS_TOKEN is too short or a well-known value, so "
+            "/api/metrics is off. Use 16+ random characters (see .env.example).",
+            flush=True,
+        )
     if settings.public_url and not oauth_service.public_url_ok(settings.public_url):
         print(
             "PC Doctor: PCDOCTOR_PUBLIC_URL must be https:// (plain http:// only to this "

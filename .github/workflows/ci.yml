@@ -258,6 +258,11 @@ jobs:
           docker compose up -d --wait --wait-timeout 120
           curl -fsS -b cookies.txt "http://localhost:8080/api/worklog?q=compose" | grep -q "Compose smoke test"
       - name: The queue path - Go upload service, Redis, worker - and monitoring
+        env:
+          # Throwaway values for this test run only; the scale stack has no defaults.
+          REDIS_PASSWORD: ci-redis-password-${{ github.run_id }}
+          PCDOCTOR_METRICS_TOKEN: ci-metrics-token-${{ github.run_id }}
+          GRAFANA_PASSWORD: ci-grafana-${{ github.run_id }}
         run: |
           set -euo pipefail
           docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --build --wait --wait-timeout 240
@@ -279,8 +284,15 @@ jobs:
           curl -fsS 'http://localhost:9090/api/v1/query?query=up' > up.json
           python3 -c 'import json; r=json.load(open("up.json"))["data"]["result"]; up={x["metric"]["job"]: x["value"][1] for x in r}; print(up); assert up=={"api":"1","upload":"1","worker":"1"}, up'
           curl -fsS http://localhost:3000/api/health | grep -q '"database": *"ok"'
+          # Redis refuses a client without the password.
+          docker compose -f docker-compose.yml -f docker-compose.scale.yml exec -T redis \
+            sh -c 'unset REDISCLI_AUTH; redis-cli ping' | grep -q NOAUTH
       - name: Logs if something failed
         if: failure()
+        env:
+          REDIS_PASSWORD: ci-redis-password-${{ github.run_id }}
+          PCDOCTOR_METRICS_TOKEN: ci-metrics-token-${{ github.run_id }}
+          GRAFANA_PASSWORD: ci-grafana-${{ github.run_id }}
         run: docker compose -f docker-compose.yml -f docker-compose.scale.yml logs --no-color --tail 80
 
   collector:

@@ -79,7 +79,14 @@ spec:
         - name: redis
           image: redis:7-alpine
           # A queue of jobs waiting a few seconds: nothing worth writing to disk.
-          args: [redis-server, --save, "", --appendonly, "no", --maxmemory, 128mb]
+          # A password even inside the cluster: anything that gets a foothold
+          # in another pod should not be able to read or forge jobs.
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: pcdoctor-secrets, key: redis-password}
+            - {name: REDISCLI_AUTH, value: $(REDIS_PASSWORD)}
+          args: [redis-server, --save, "", --appendonly, "no", --maxmemory, 128mb, --requirepass, $(REDIS_PASSWORD)]
           ports:
             - containerPort: 6379
           readinessProbe:

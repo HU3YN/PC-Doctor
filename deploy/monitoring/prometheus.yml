@@ -10,9 +10,9 @@ scrape_configs:
   - job_name: api
     metrics_path: /api/metrics
     authorization:
-      # Matches PCDOCTOR_METRICS_TOKEN. This default is for a stack that only
-      # this computer can reach; anywhere else, set your own in .env and here.
-      credentials: local-metrics
+      # PCDOCTOR_METRICS_TOKEN, handed over by Compose as a secret file
+      # (docker-compose.scale.yml), so it is never written in this file.
+      credentials_file: /run/secrets/metrics_token
     static_configs:
       - targets: ["api:8000"]
   - job_name: upload

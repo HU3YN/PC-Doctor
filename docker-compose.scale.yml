@@ -8,11 +8,19 @@
 #   http://localhost:3000   Grafana (sign in: admin / the password below)
 #
 # Everything extra listens on this computer only.
+#
+# Three secrets must be set in .env first (see .env.example); there are no
+# defaults, so a forgotten one stops the start instead of running with a
+# password everyone knows: REDIS_PASSWORD, PCDOCTOR_METRICS_TOKEN,
+# GRAFANA_PASSWORD. Letters, digits, "-" and "_" only (they go into URLs).
 
 services:
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    command: ["sh", "-c", "exec redis-server --save 60 1 --appendonly no --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env - see .env.example}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env - see .env.example}
     volumes:
       - redisdata:/data
     healthcheck:
@@ -24,8 +32,8 @@ services:
 
   api:
     environment:
-      PCDOCTOR_REDIS_URL: redis://redis:6379/0
-      PCDOCTOR_METRICS_TOKEN: ${PCDOCTOR_METRICS_TOKEN:-local-metrics}
+      PCDOCTOR_REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env - see .env.example}@redis:6379/0
+      PCDOCTOR_METRICS_TOKEN: ${PCDOCTOR_METRICS_TOKEN:?Set PCDOCTOR_METRICS_TOKEN in .env - see .env.example}
     depends_on:
       redis:
         condition: service_healthy
@@ -38,7 +46,7 @@ services:
     environment:
       PCDOCTOR_DATABASE_URL: postgresql://pcdoctor:${POSTGRES_PASSWORD:-pcdoctor}@db:5432/pcdoctor
       PCDOCTOR_DATA_DIR: /data
-      PCDOCTOR_REDIS_URL: redis://redis:6379/0
+      PCDOCTOR_REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env - see .env.example}@redis:6379/0
       PCDOCTOR_AUTO_MIGRATE: "false"   # the API owns the schema
       # The worker tells the same webhook about guest runs it processes.
       PCDOCTOR_NOTIFY_WEBHOOK_URL: ${PCDOCTOR_NOTIFY_WEBHOOK_URL:-}
@@ -62,7 +70,7 @@ services:
       context: .
       dockerfile: upload-service/Dockerfile
     environment:
-      PCDOCTOR_REDIS_URL: redis://redis:6379/0
+      PCDOCTOR_REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env - see .env.example}@redis:6379/0
       PCDOCTOR_SPOOL_DIR: /data/spool
       PCDOCTOR_MAX_UPLOAD_MB: ${PCDOCTOR_MAX_UPLOAD_MB:-200}
     volumes:
@@ -83,6 +91,8 @@ services:
       - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./deploy/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
       - promdata:/prometheus
+    secrets:
+      - metrics_token   # read as a file: /run/secrets/metrics_token
     ports:
       - "127.0.0.1:9090:9090"
     restart: unless-stopped
@@ -90,7 +100,7 @@ services:
   grafana:
     image: grafana/grafana-oss:11.3.0
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-pcdoctor}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Set GRAFANA_PASSWORD in .env - see .env.example}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
     volumes:
@@ -102,6 +112,10 @@ services:
     depends_on:
       - prometheus
     restart: unless-stopped
+
+secrets:
+  metrics_token:
+    environment: PCDOCTOR_METRICS_TOKEN
 
 volumes:
   redisdata:

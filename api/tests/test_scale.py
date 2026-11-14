@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 
+import pytest
 from pcdoctor_analysis import synth
 
 from pcdoctor_api import metrics
@@ -115,14 +116,25 @@ def test_worker_records_the_job_state_for_the_uploader(client):
     assert handle(redis, b"not json", get_settings())["status"] == "failed"
 
 
+@pytest.mark.parametrize("token", ["local-metrics", "short", "LOCAL-METRICS"])
+def test_a_guessable_metrics_token_turns_metrics_off(client, guest, monkeypatch, token):
+    monkeypatch.setenv("PCDOCTOR_METRICS_TOKEN", token)
+    get_settings.cache_clear()
+    assert (
+        guest.get("/api/metrics", headers={"Authorization": f"Bearer {token}"}).status_code == 404
+    )
+
+
 def test_metrics_need_the_token_and_do_not_exist_without_one(client, guest, monkeypatch):
     assert guest.get("/api/metrics").status_code == 404
-    monkeypatch.setenv("PCDOCTOR_METRICS_TOKEN", "scrape-me")
+    monkeypatch.setenv("PCDOCTOR_METRICS_TOKEN", "scrape-me-with-a-long-token")
     get_settings.cache_clear()
     assert guest.get("/api/metrics").status_code == 401
     assert client.get("/api/metrics").status_code == 401  # even the master: token only
     client.get("/api/runs/some-private-id")
-    body = guest.get("/api/metrics", headers={"Authorization": "Bearer scrape-me"}).text
+    body = guest.get(
+        "/api/metrics", headers={"Authorization": "Bearer scrape-me-with-a-long-token"}
+    ).text
     assert "pcdoctor_http_requests_total" in body
     assert 'route="/api/runs/{run_id}"' in body and "some-private-id" not in body
 
