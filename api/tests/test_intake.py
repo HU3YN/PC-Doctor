@@ -129,3 +129,34 @@ def test_photo_reading_says_so_when_tesseract_is_missing(client, monkeypatch):
     response = send(client, b"anything")
     assert response.status_code == 503 and "Tesseract" in response.json()["detail"]
     assert client.get("/api/collector").json()["photo_reading"] is False
+
+
+def framed(picture: bytes, border: int, tilt: float = 0.0) -> bytes:
+    """The screen as a phone sees it: a dark bezel around it, maybe a little tilted."""
+    from PIL import Image
+
+    screen = Image.open(io.BytesIO(picture)).convert("RGB")
+    photo_image = Image.new(
+        "RGB", (screen.width + 2 * border, screen.height + 2 * border), (18, 18, 20)
+    )
+    photo_image.paste(screen, (border, border))
+    if tilt:
+        photo_image = photo_image.rotate(tilt, expand=True, fillcolor=(0, 0, 0))
+    buffer = io.BytesIO()
+    photo_image.save(buffer, "JPEG", quality=88)
+    return buffer.getvalue()
+
+
+@needs_ocr
+@pytest.mark.parametrize(("border", "tilt"), [(20, 0.0), (200, 0.0), (0, 2.0), (80, -2.0)])
+def test_a_bezel_or_a_tilt_does_not_hide_the_stop_code(border, tilt):
+    # Regression: a dark border or a 2-degree tilt used to make the reader
+    # return no text at all (found by eval/photo_eval.py).
+    from pcdoctor_analysis import errortext
+
+    picture = blue_screen(
+        ["Your PC ran into a problem and needs to restart.", "Stop code: CRITICAL_PROCESS_DIED"]
+    )
+    text = photo.read_text(framed(picture, border, tilt))
+    found = errortext.interpret(text)
+    assert "CRITICAL_PROCESS_DIED" in str(found), text
