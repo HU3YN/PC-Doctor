@@ -106,6 +106,12 @@ class ShareKey(Base):
     key_hash: Mapped[str] = mapped_column(String(64), unique=True)
     label: Mapped[str] = mapped_column(String(200), default="")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    # The member account that made this upload, if one was signed in. Their
+    # "My runs" lists every run they hold a key for, even one somebody else
+    # uploaded first. Removing the account leaves the link working.
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL"), index=True
+    )
 
     run: Mapped[Run] = relationship(back_populates="share_keys")
 

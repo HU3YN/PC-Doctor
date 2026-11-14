@@ -18,7 +18,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from pcdoctor_analysis import RULES_VERSION
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 from starlette.concurrency import run_in_threadpool
 
@@ -188,7 +188,13 @@ async def upload_run(
         # the same run keep working.
         share_key = auth_service.new_token()
         own_label = result.run.label if result.created else label.strip()[:200]
-        add_share_key(db, result.run, auth_service.token_hash(share_key), own_label)
+        add_share_key(
+            db,
+            result.run,
+            auth_service.token_hash(share_key),
+            own_label,
+            account.id if account is not None else None,
+        )
         if account is not None and result.created:
             result.run.owner_id = account.id
         db.commit()
@@ -199,8 +205,10 @@ async def upload_run(
     return RunUploaded(run=summary, duplicate=not result.created, share_key=share_key)
 
 
-def add_share_key(db: Session, run: Run, key_hash: str, label: str) -> None:
-    db.add(ShareKey(run=run, key_hash=key_hash, label=label))
+def add_share_key(
+    db: Session, run: Run, key_hash: str, label: str, account_id: int | None = None
+) -> None:
+    db.add(ShareKey(run=run, key_hash=key_hash, label=label, account_id=account_id))
 
 
 @router.get("", response_model=RunList)
@@ -278,20 +286,38 @@ def remove_run(run_id: str, db: Db, settings: Config, _: Master) -> None:
 mine = APIRouter(prefix="/api/me", tags=["member"])
 
 
+def my_labels(db: Session, account_id: int) -> dict[str, str]:
+    """For each run this account holds a link to, the label it typed (newest upload)."""
+    keys = db.scalars(
+        select(ShareKey).where(ShareKey.account_id == account_id).order_by(ShareKey.id)
+    )
+    return {key.run_id: key.label for key in keys}
+
+
 @mine.get("/runs", response_model=RunList)
 def my_runs(db: Db, account: SignedIn) -> RunList:
-    """The runs this account uploaded. Members see these and nothing else."""
+    """The runs this account uploaded - including a file somebody else had
+    already uploaded. Members see these and nothing else, each with the label
+    they typed themselves."""
+    labels = my_labels(db, account.id)
     runs = list(
         db.scalars(
-            select(Run).where(Run.owner_id == account.id).order_by(Run.created_at.desc()).limit(200)
+            select(Run)
+            .where(or_(Run.owner_id == account.id, Run.id.in_(list(labels))))
+            .order_by(Run.created_at.desc())
+            .limit(200)
         )
     )
-    return RunList(items=[RunSummary.model_validate(r) for r in runs], total=len(runs))
+    items = [
+        RunSummary.model_validate(r).model_copy(update={"label": labels.get(r.id, r.label)})
+        for r in runs
+    ]
+    return RunList(items=items, total=len(items))
 
 
 def own_run(db: Session, run_id: str, account_id: int) -> Run:
     run = get_run(db, run_id)
-    if run.owner_id != account_id:
+    if run.owner_id != account_id and run_id not in my_labels(db, account_id):
         # The same answer as for a run that does not exist: do not confirm it does.
         raise HTTPException(status_code=404, detail="Run not found.")
     return run
@@ -299,8 +325,12 @@ def own_run(db: Session, run_id: str, account_id: int) -> Run:
 
 @mine.get("/runs/{run_id}", response_model=RunDetail)
 def my_run(run_id: str, db: Db, account: SignedIn) -> RunDetail:
-    full = detail(db, own_run(db, run_id, account.id))
-    return full.model_copy(update={"similar_cases": [], "work_log": [], "notes": ""})
+    run = own_run(db, run_id, account.id)
+    full = detail(db, run)
+    label = my_labels(db, account.id).get(run_id, run.label)
+    return full.model_copy(
+        update={"similar_cases": [], "work_log": [], "notes": "", "label": label}
+    )
 
 
 @mine.get("/runs/{run_id}/series")
@@ -310,7 +340,14 @@ def my_run_series(run_id: str, db: Db, account: SignedIn) -> dict[str, Any]:
 
 @mine.delete("/runs/{run_id}", status_code=204)
 def remove_my_run(run_id: str, db: Db, settings: Config, account: SignedIn) -> None:
-    ingest_service.delete_run(db, settings, own_run(db, run_id, account.id))
+    """Delete a run this account uploaded first. For a run somebody else
+    uploaded first, only this account's own links to it are removed."""
+    run = own_run(db, run_id, account.id)
+    if run.owner_id == account.id:
+        ingest_service.delete_run(db, settings, run)
+        return
+    db.execute(delete(ShareKey).where(ShareKey.run_id == run_id, ShareKey.account_id == account.id))
+    db.commit()
 
 
 shared = APIRouter(prefix="/api/shared", tags=["guest"])

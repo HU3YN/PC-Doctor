@@ -207,6 +207,31 @@ def test_a_member_sees_only_their_own_runs(client, member, provider):
     assert client.get("/api/runs").json()["total"] == 1
 
 
+def test_a_member_sees_a_file_somebody_else_uploaded_first(client, member, provider):
+    first = client.post(
+        "/api/runs", files=run_zip("bad_ram"), data={"label": "master's own note"}
+    ).json()["run"]["id"]
+    sent = member.post("/api/runs", files=run_zip("bad_ram"), data={"label": "my gaming pc"}).json()
+    assert sent["duplicate"] and sent["run"]["id"] == first
+
+    # Listed under "My runs", with the member's own label - never the master's.
+    items = member.get("/api/me/runs").json()["items"]
+    assert [(r["id"], r["label"]) for r in items] == [(first, "my gaming pc")]
+    assert member.get(f"/api/me/runs/{first}").json()["label"] == "my gaming pc"
+
+    # Another member still cannot see it.
+    provider.subject = "person-3"
+    other = browser(client)
+    sign_in(other, provider)
+    assert other.get(f"/api/me/runs/{first}").status_code == 404
+
+    # "Delete" removes only the member's own link: the run is the master's.
+    assert member.delete(f"/api/me/runs/{first}").status_code == 204
+    assert member.get("/api/me/runs").json()["total"] == 0
+    assert member.get(f"/api/shared/{sent['share_key']}").status_code == 404
+    assert client.get(f"/api/runs/{first}").json()["label"] == "master's own note"
+
+
 def test_the_master_can_link_a_provider_and_then_sign_in_with_it(client, provider):
     # "link" needs a signed-in browser.
     assert browser(client).get("/api/auth/oauth/discord/start?intent=link").status_code == 401
