@@ -163,7 +163,7 @@ export function toRows(
 
 // Sensor charts, grouped by unit. Colors follow the part, not the position:
 // CPU is always --series-1 and GPU always --series-2.
-const SENSOR_CHARTS: { title: string; unit: string; zeroBased?: boolean; series: SeriesSpec[] }[] = [
+export const SENSOR_CHARTS: { title: string; unit: string; zeroBased?: boolean; series: SeriesSpec[] }[] = [
   {
     title: "Temperatures",
     unit: "°C",

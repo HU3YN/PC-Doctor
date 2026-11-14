@@ -15,6 +15,7 @@ use chrono::{Local, Utc};
 use clap::{ArgGroup, Parser};
 
 use pcdoctor_capture::lhm::LhmSource;
+use pcdoctor_capture::live;
 use pcdoctor_capture::manifest::{
     round1, Capture, CollectorInfo, Manifest, PresentMonInfo, SensorsInfo,
 };
@@ -94,6 +95,18 @@ struct Args {
     /// Write the folder only, no zip.
     #[arg(long)]
     no_zip: bool,
+
+    /// Also stream frame times and sensor readings to a PC Doctor live
+    /// session while capturing (the address the Live page shows). https://,
+    /// or http:// to this PC or a private network only.
+    #[arg(long, value_name = "URL")]
+    live_url: Option<String>,
+}
+
+/// Streaming to a live session, when --live-url is given.
+struct Live {
+    sender: live::LiveSender,
+    times: Option<live::FrameTimes>,
 }
 
 /// What the run did, in plain words, for collector.log and the console.
@@ -205,6 +218,19 @@ fn capture(args: &Args) -> Result<(), String> {
         std::thread::sleep(Duration::from_secs(args.start_delay));
     }
 
+    // ---- live view (optional, best effort: the run on disk is the record)
+    let mut live = match &args.live_url {
+        Some(url) => {
+            let sender = live::LiveSender::new(url)?;
+            log.step("Live view: streaming frame times and sensors about once a second");
+            Some(Live {
+                sender,
+                times: None,
+            })
+        }
+        None => None,
+    };
+
     // ---- frames
     let mut frames = open_frame_source(args, &run_dir, &mut log)?;
 
@@ -239,6 +265,9 @@ fn capture(args: &Args) -> Result<(), String> {
                 };
                 if !sample.is_empty() {
                     samples_with_data += 1;
+                    if let Some(live) = live.as_mut() {
+                        live.sender.sensors(elapsed, &sample);
+                    }
                 }
                 rows.push(sensors::format_row(elapsed, &sample));
                 // Fixed schedule (not "interval after the last one"), so slow
@@ -249,7 +278,10 @@ fn capture(args: &Args) -> Result<(), String> {
             }
         }
         if let Some(source) = frames.as_mut() {
-            feed(source, false)?;
+            feed(source, false, live.as_mut())?;
+        }
+        if let Some(live) = live.as_mut() {
+            send_live(live, &mut log);
         }
         let until_end = duration.saturating_sub(clock.elapsed());
         let until_sample = next_sample.saturating_sub(clock.elapsed());
@@ -260,6 +292,20 @@ fn capture(args: &Args) -> Result<(), String> {
         std::thread::sleep(wait);
     }
     let actual_seconds = round1(clock.elapsed().as_secs_f64());
+    // Frames PresentMon wrote just before it stopped still go to the live
+    // view; finish_frames reads the very last ones for the file.
+    if let Some(source) = frames.as_mut() {
+        feed(source, false, live.as_mut())?;
+    }
+    if let Some(live) = live.as_mut() {
+        if let live::Sent::Stopped(reason) | live::Sent::Later(reason) = live.sender.finish() {
+            log.warn(&format!("Live view: {reason}"));
+        }
+        log.step(&format!(
+            "Live view: {} lines sent, {} not delivered",
+            live.sender.lines_sent, live.sender.lines_dropped
+        ));
+    }
     if sample_errors > 0 {
         log.warn(&format!(
             "{sample_errors} sensor samples could not be read and were left empty."
@@ -425,7 +471,21 @@ fn open_frame_source(
 /// Read new PresentMon lines into the filter. With `last`, this is the final
 /// read: an unterminated last row is kept only if we started PresentMon (it
 /// has exited, so the row is complete).
-fn feed(source: &mut FrameSource, last: bool) -> Result<(), String> {
+/// Send what is due to the live session, and say once if it has stopped.
+fn send_live(live: &mut Live, log: &mut Log) {
+    let was_stopped = live.sender.is_stopped();
+    match live.sender.tick(Instant::now()) {
+        live::Sent::Stopped(reason) if !was_stopped => {
+            log.warn(&format!("Live view stopped: {reason}. The capture carries on."))
+        }
+        live::Sent::Later(reason) if live.sender.failures == 1 => log.warn(&format!(
+            "Live view: PC Doctor did not take the samples ({reason}); retrying. The capture carries on."
+        )),
+        _ => {}
+    }
+}
+
+fn feed(source: &mut FrameSource, last: bool, mut live: Option<&mut Live>) -> Result<(), String> {
     let lines = if last {
         let writer_finished = source.child.is_some();
         source.tail.finish(writer_finished)
@@ -434,10 +494,22 @@ fn feed(source: &mut FrameSource, last: bool) -> Result<(), String> {
     };
     let lines = lines.map_err(|e| format!("cannot read the PresentMon file ({})", e.kind()))?;
     for line in lines {
+        let header_before = source.filter.header_seen();
+        let frames_before = source.filter.summary().frames;
         source
             .filter
             .push_line(&line)
             .map_err(|e| format!("cannot write presentmon.csv: {e}"))?;
+        if let Some(live) = live.as_deref_mut() {
+            if !header_before && source.filter.header_seen() {
+                live.times = Some(live::FrameTimes::from_header(&line));
+            } else if source.filter.summary().frames > frames_before {
+                // A row of the target program: only its frame time is sent.
+                if let Some((seconds, ms)) = live.times.as_mut().and_then(|t| t.read(&line)) {
+                    live.sender.frame(seconds, ms);
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -458,7 +530,7 @@ fn finish_frames(
         info.exit_code = wait_or_kill(child, log);
     }
     let last_read = if source.tail.is_open() || source.child.is_some() {
-        feed(&mut source, true)
+        feed(&mut source, true, None)
     } else {
         Err("the PresentMon file was never found".to_string())
     };

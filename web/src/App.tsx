@@ -9,6 +9,7 @@ import { DeadPcPage } from "./pages/DeadPcPage";
 import { GetCollectorPage } from "./pages/GetCollectorPage";
 import { GuestHome } from "./pages/GuestHome";
 import { InboxPage } from "./pages/InboxPage";
+import { LiveListPage, LivePage } from "./pages/LivePage";
 import { LookupPage } from "./pages/LookupPage";
 import { MemberHome } from "./pages/MemberHome";
 import { RunPage } from "./pages/RunPage";
@@ -119,6 +120,7 @@ export function App() {
               <NavLink to="/inbox">Photos{waiting > 0 ? ` (${waiting})` : ""}</NavLink>
               <NavLink to="/lookup">Look up</NavLink>
               <NavLink to="/wont-start">Won&apos;t start</NavLink>
+              <NavLink to="/live">Live</NavLink>
               <NavLink to="/get">Get collector</NavLink>
               <NavLink to="/account">Account</NavLink>
             </nav>
@@ -173,6 +175,8 @@ export function App() {
             <Route path="/wont-start" element={<DeadPcPage />} />
             <Route path="/get" element={<GetCollectorPage />} />
             <Route path="/account" element={<AccountPage />} />
+            <Route path="/live" element={<LiveListPage />} />
+            <Route path="/live/:id" element={<LivePage />} />
             <Route path="/login" element={<RunsPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

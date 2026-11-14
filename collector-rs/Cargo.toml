@@ -29,9 +29,9 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # run_id.
 uuid = { version = "1", features = ["v4"] }
-# LibreHardwareMonitor's web server is plain HTTP on localhost, so no TLS
-# support is compiled in.
-ureq = { version = "2", default-features = false }
+# HTTP: LibreHardwareMonitor's web server (plain HTTP on localhost) and the
+# optional live view (HTTPS, with rustls and the Mozilla root certificates).
+ureq = { version = "2", default-features = false, features = ["tls"] }
 # Number parsing of formatted sensor values and the label scrubber.
 regex = "1"
 

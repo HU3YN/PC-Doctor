@@ -75,6 +75,30 @@ Other flags: `--lhm-url` (default `http://localhost:8085/data.json`),
 At the end it prints its own CPU time and peak memory, and writes them to
 `manifest.json` under `collector_resources`.
 
+## Live view (optional)
+
+On the master, open **Live** in the dashboard and start a session. It shows a
+samples address once. Give it to the collector:
+
+```
+pcdoctor-capture --process Game.exe --start-presentmon tools\PresentMon.exe --live-url https://pcdoctor.example.com/api/live/<token>/samples
+```
+
+About once a second the collector sends the new frame times and sensor
+readings (NDJSON: `{"type":"frame","t":..,"ms":..}`, `{"type":"sensor",...}`,
+and `{"type":"end"}` at the end), and the Live page draws them. Only frame
+times and sensor values are sent: no program names, paths or anything else.
+`https://` is required, except to this PC or a private network address
+(`http://192.168.x.x`, `http://localhost`). Streaming is best effort: if the
+server cannot be reached, lines wait and the capture carries on; the run on
+disk is the record and is uploaded as usual. The token can only add samples
+to that one session.
+
+Tested end to end in the build container: the binary followed a growing
+PresentMon file from the fixtures and streamed 900 frames and 10 sensor
+readings into a running API; the Live page showed the same average FPS as
+the analyzer. Not tested over HTTPS or from a real Windows PC.
+
 ## Comparing its overhead with the PowerShell collector
 
 The question is what each collector costs the PC *while a game runs*. To

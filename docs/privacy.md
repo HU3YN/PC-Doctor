@@ -108,6 +108,15 @@ This is optional and off until the master sets it up ([oauth.md](oauth.md)).
   always goes to them alone. The bot keeps nothing. Its token (`PCDOCTOR_BOT_TOKEN`) only gives it a higher
   upload limit; it cannot read any run.
 
+## Live view
+
+Optional. When the master starts a live session and the capture collector is
+given its address (`--live-url`), the collector sends frame times and sensor
+readings while it runs - the same numbers that end up in `presentmon.csv`
+and `sensors.csv`, without program names. They are held in memory (or in
+Redis) for at most 6 hours, never written to the database, and visible only
+to the master. The session's address can only add samples; it reads nothing.
+
 ## Photos
 
 Photos sent through a QR link are **stored** on the master (they are the

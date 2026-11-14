@@ -15,8 +15,9 @@ from sqlalchemy.orm import Session
 from . import __version__, metrics
 from .config import Settings, get_settings
 from .db import get_db, migrate
-from .routers import assist, auth, inbox, intake, oauth, reference, runs, worklog
+from .routers import assist, auth, inbox, intake, live, oauth, reference, runs, worklog
 from .services import auth as auth_service
+from .services import live as live_service
 
 
 @contextmanager
@@ -33,6 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         migrate()
     auth_service.use_shared_limits(settings.redis_url)
     auth_service.bot_uploads.limit = settings.bot_uploads_per_hour
+    live_service.use_redis(settings.redis_url)
     # Until the master account exists, make sure the setup code does, and show
     # it where only someone at the server can see it.
     try:
@@ -95,6 +97,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(inbox.router)
     app.include_router(assist.router)
+    app.include_router(live.router)
 
     dist = settings.web_dist
     if dist is None:

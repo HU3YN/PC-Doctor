@@ -167,6 +167,10 @@ MASTER_ONLY = [
     ("post", "/api/assist/troubleshoot"),
     ("get", "/api/accounts"),
     ("delete", "/api/accounts/1"),
+    ("post", "/api/live"),
+    ("get", "/api/live"),
+    ("get", "/api/live/abc"),
+    ("delete", "/api/live/abc"),
 ]
 # Any signed-in account may use these, but each sees only what is its own.
 SIGNED_IN = [
@@ -208,6 +212,7 @@ def test_every_api_route_is_either_master_only_or_deliberately_public(client):
         ("GET", "/api/auth/oauth"),
         ("GET", "/api/auth/oauth/{name}/start"),
         ("GET", "/api/auth/oauth/{name}/callback"),
+        ("POST", "/api/live/{token}/samples"),  # token: can add samples, reads nothing
     }
     import re
 

@@ -17,6 +17,7 @@
 //! PowerShell collector writes, so the analyzer reads both.
 
 pub mod lhm;
+pub mod live;
 pub mod manifest;
 pub mod presentmon;
 pub mod privacy;

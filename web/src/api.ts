@@ -298,6 +298,33 @@ function describe(detail: unknown, status: number): string {
   return `The server answered with an error (${status}).`;
 }
 
+export interface LiveSummary {
+  id: string;
+  label: string;
+  created_at: number;
+  expires_at: number;
+  frames_total: number;
+  sensor_rows_total: number;
+  last_sample_at: number | null;
+  ended: boolean;
+}
+
+export interface LiveOpened extends LiveSummary {
+  token: string;
+  samples_path: string;
+}
+
+export interface LiveView extends LiveSummary {
+  stats: {
+    frames_in_last_10_s: number;
+    avg_fps_last_10_s?: number;
+    one_pct_low_fps_last_10_s?: number;
+    worst_frame_ms_last_10_s?: number;
+  };
+  frames: { t: number; ms: number }[];
+  sensors: { t: number; values: Record<string, number> }[];
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -416,6 +443,11 @@ export const api = {
   linkPhoto: (id: string, workLogId: number | null) =>
     request<InboxPhoto>(`/api/inbox/${id}`, json("PATCH", { work_log_id: workLogId })),
   deletePhoto: (id: string) => request<void>(`/api/inbox/${id}`, { method: "DELETE" }),
+
+  liveSessions: () => request<LiveSummary[]>("/api/live"),
+  openLive: (label: string) => request<LiveOpened>("/api/live", json("POST", { label })),
+  live: (id: string) => request<LiveView>(`/api/live/${encodeURIComponent(id)}`),
+  closeLive: (id: string) => request<void>(`/api/live/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   assist: () => request<{ available: boolean; model: string }>("/api/assist"),
   draft: (body: { run_id?: string | null; photo_id?: string | null; notes?: string }) =>
