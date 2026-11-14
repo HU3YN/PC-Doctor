@@ -141,6 +141,7 @@ MASTER_ONLY = [
     ("get", "/api/runs/abc"),
     ("get", "/api/runs/abc/series"),
     ("get", "/api/runs/abc/download"),
+    ("get", "/api/runs/abc/compare"),
     ("delete", "/api/runs/abc"),
     ("post", "/api/runs/abc/reanalyze"),
     ("patch", "/api/runs/abc"),

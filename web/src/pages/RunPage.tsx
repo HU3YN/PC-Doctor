@@ -213,6 +213,63 @@ function Troubleshooter({ runId, categories }: { runId: string; categories: Reco
   );
 }
 
+/** Where this run sits among runs of the same graphics card and game (master only). */
+function Comparison({ runId }: { runId: string }) {
+  const answer = useQuery({ queryKey: ["compare", runId], queryFn: () => api.compare(runId) });
+  if (answer.isLoading) return null;
+  if (answer.error) return <ErrorNotice error={answer.error} />;
+  const data = answer.data;
+  if (!data) return null;
+  const shown = data.groups.filter((group) => group.metrics.length > 0);
+  return (
+    <section className="card stack" style={{ gap: 10 }}>
+      <h2>Compared with the same build</h2>
+      <p className="muted small">
+        {data.gpu ?? "Unknown graphics card"} in {data.application ?? "an unknown game"}. Only your own stored
+        runs count, and nothing is shown with fewer than {data.minimum} of them.
+      </p>
+      {shown.length === 0 && <p>{data.reason}</p>}
+      {shown.map((group) => (
+        <div key={group.title} className="stack" style={{ gap: 6 }}>
+          <h3>
+            {group.title} <span className="muted small">({group.runs} other runs)</span>
+          </h3>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Reading</th>
+                  <th>This run</th>
+                  <th>Middle half of the others</th>
+                  <th>Better than</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.metrics.map((metric) => (
+                  <tr key={metric.key}>
+                    <td>{metric.label}</td>
+                    <td>
+                      {formatNumber(metric.value)} {metric.unit}
+                    </td>
+                    <td>
+                      {formatNumber(metric.q1)} to {formatNumber(metric.q3)} {metric.unit} (median{" "}
+                      {formatNumber(metric.median)})
+                    </td>
+                    <td>
+                      {metric.better_than_pct}% of {metric.peers}
+                      <span className="muted small">{metric.higher_is_better ? " (higher is better)" : " (cooler is better)"}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 export function RunPage({ shared = false, mine = false }: { shared?: boolean; mine?: boolean }) {
   // A member looking at their own run sees what a guest sees through a link.
   const limited = shared || mine;
@@ -389,6 +446,8 @@ export function RunPage({ shared = false, mine = false }: { shared?: boolean; mi
       )}
 
       {!limited && <Troubleshooter runId={data.id} categories={categories} />}
+
+      {!limited && data.frame_stats && <Comparison runId={data.id} />}
 
       {(data.similar_cases.length > 0 || data.work_log.length > 0) && (
         <section className="stack" style={{ gap: 12 }}>

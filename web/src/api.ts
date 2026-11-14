@@ -325,6 +325,28 @@ export interface LiveView extends LiveSummary {
   sensors: { t: number; values: Record<string, number> }[];
 }
 
+export interface CompareMetric {
+  key: string;
+  label: string;
+  unit: string;
+  value: number;
+  peers: number;
+  median: number;
+  q1: number;
+  q3: number;
+  better_than_pct: number;
+  higher_is_better: boolean;
+}
+
+export interface BuildComparison {
+  gpu: string | null;
+  cpu: string | null;
+  application: string | null;
+  minimum: number;
+  reason?: string;
+  groups: { title: string; runs: number; metrics: CompareMetric[] }[];
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -369,6 +391,7 @@ export const api = {
   runs: () => request<{ items: RunSummary[]; total: number }>("/api/runs?limit=200"),
   run: (id: string) => request<RunDetail>(`/api/runs/${id}`),
   series: (id: string) => request<Series>(`/api/runs/${id}/series`),
+  compare: (id: string) => request<BuildComparison>(`/api/runs/${id}/compare`),
   uploadRun: (file: File) => {
     const form = new FormData();
     form.append("file", file);

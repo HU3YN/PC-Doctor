@@ -37,6 +37,7 @@ from ..schemas import (
     WorkLogBrief,
 )
 from ..services import auth as auth_service
+from ..services import compare as compare_service
 from ..services import ingest as ingest_service
 from ..services import notify
 from ..services.similarity import Query as SimilarityQuery
@@ -261,6 +262,12 @@ def download_run(run_id: str, db: Db, settings: Config, _: Master) -> FileRespon
     return FileResponse(
         path, media_type="application/zip", filename=f"pcdoctor-run-{run.id[:8]}.zip"
     )
+
+
+@router.get("/{run_id}/compare")
+def compare_run(run_id: str, db: Db, _: Master) -> dict[str, Any]:
+    """Where this run sits among runs of the same graphics card and game."""
+    return compare_service.compare(db, get_run(db, run_id))
 
 
 @router.delete("/{run_id}", status_code=204)

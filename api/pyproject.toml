@@ -21,6 +21,8 @@ dependencies = [
     "python-multipart>=0.0.9",
     "prometheus-client>=0.20",
     "httpx>=0.27",
+    # Build comparison (services/compare.py): ranks a run among similar ones.
+    "duckdb>=1.1",
 ]
 
 [project.optional-dependencies]
