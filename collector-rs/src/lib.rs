@@ -25,6 +25,7 @@ pub mod resources;
 pub mod run;
 pub mod sensors;
 pub mod tail;
+pub mod winsensors;
 
 /// `schema_version` in manifest.json. Must match the PowerShell collector's
 /// `$script:SchemaVersion`; the analyzer warns about versions it does not know.

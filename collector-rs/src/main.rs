@@ -24,6 +24,7 @@ use pcdoctor_capture::resources::{self, ResourceUsage};
 use pcdoctor_capture::run::{self, remove_if_exists};
 use pcdoctor_capture::sensors::{self, Sample};
 use pcdoctor_capture::tail::FileTail;
+use pcdoctor_capture::winsensors::WindowsSensors;
 use pcdoctor_capture::{privacy, COLLECTOR_NAME, COLLECTOR_VERSION, SCHEMA_VERSION};
 
 /// How often the PresentMon file is checked for new rows.
@@ -191,6 +192,10 @@ fn capture(args: &Args) -> Result<(), String> {
         Some(LhmSource::http(&args.lhm_url, LHM_TIMEOUT))
     };
     let mut gpu_prefix = None;
+    // Without LibreHardwareMonitor, Windows' own counters still give loads,
+    // speeds and RAM use (no temperatures), as in the PowerShell collector.
+    let mut windows_sensors: Option<WindowsSensors> = None;
+    let mut sensor_source = sensor_source;
     if let Some(source) = &sensor_source {
         match source.read() {
             Ok(first) => {
@@ -203,12 +208,26 @@ fn capture(args: &Args) -> Result<(), String> {
                     .map_err(|e| format!("cannot write sensors_raw.json: {e}"))?;
                 log.step("Sensors: LibreHardwareMonitor");
             }
-            Err(reason) => log.warn(&format!(
-                "{reason}. There will be no temperatures in this run unless it starts answering. \
-                 Start LibreHardwareMonitor and switch on Options > Remote Web Server > Run."
-            )),
+            Err(reason) => match WindowsSensors::open() {
+                // A saved data.json (--lhm-file) is a test: no fallback then.
+                Ok(fallback) if args.lhm_file.is_none() => {
+                    windows_sensors = Some(fallback);
+                    sensor_source = None;
+                    log.warn(&format!(
+                        "{reason}, so this run has Windows' own readings (load, speed, RAM) \
+                         and no temperatures. Start LibreHardwareMonitor and switch on \
+                         Options > Remote Web Server > Run, then capture again."
+                    ));
+                }
+                _ => log.warn(&format!(
+                    "{reason}. There will be no temperatures in this run unless it starts \
+                     answering. Start LibreHardwareMonitor and switch on Options > Remote Web \
+                     Server > Run."
+                )),
+            },
         }
     }
+    let sensor_source = sensor_source;
 
     if args.start_delay > 0 {
         println!(
@@ -246,10 +265,11 @@ fn capture(args: &Args) -> Result<(), String> {
     let mut next_sample = Duration::ZERO;
     let mut sample_errors = 0u64;
     while clock.elapsed() < duration {
-        if let Some(source) = &sensor_source {
-            if clock.elapsed() >= next_sample {
-                let elapsed = clock.elapsed().as_secs_f64();
-                let sample = match source.read() {
+        let sampling = sensor_source.is_some() || windows_sensors.is_some();
+        if sampling && clock.elapsed() >= next_sample {
+            let elapsed = clock.elapsed().as_secs_f64();
+            let sample = match (&sensor_source, &windows_sensors) {
+                (Some(source), _) => match source.read() {
                     Ok(list) => {
                         if gpu_prefix.is_none() {
                             gpu_prefix = sensors::select_gpu_prefix(&list);
@@ -262,19 +282,21 @@ fn capture(args: &Args) -> Result<(), String> {
                         sample_errors += 1;
                         Sample::default()
                     }
-                };
-                if !sample.is_empty() {
-                    samples_with_data += 1;
-                    if let Some(live) = live.as_mut() {
-                        live.sender.sensors(elapsed, &sample);
-                    }
+                },
+                (None, Some(windows)) => windows.read(),
+                (None, None) => Sample::default(),
+            };
+            if !sample.is_empty() {
+                samples_with_data += 1;
+                if let Some(live) = live.as_mut() {
+                    live.sender.sensors(elapsed, &sample);
                 }
-                rows.push(sensors::format_row(elapsed, &sample));
-                // Fixed schedule (not "interval after the last one"), so slow
-                // reads do not make the samples drift.
-                while next_sample <= clock.elapsed() {
-                    next_sample += interval;
-                }
+            }
+            rows.push(sensors::format_row(elapsed, &sample));
+            // Fixed schedule (not "interval after the last one"), so slow
+            // reads do not make the samples drift.
+            while next_sample <= clock.elapsed() {
+                next_sample += interval;
             }
         }
         if let Some(source) = frames.as_mut() {
@@ -286,7 +308,7 @@ fn capture(args: &Args) -> Result<(), String> {
         let until_end = duration.saturating_sub(clock.elapsed());
         let until_sample = next_sample.saturating_sub(clock.elapsed());
         let mut wait = POLL_INTERVAL.min(until_end);
-        if sensor_source.is_some() {
+        if sampling {
             wait = wait.min(until_sample);
         }
         std::thread::sleep(wait);
@@ -314,17 +336,26 @@ fn capture(args: &Args) -> Result<(), String> {
 
     // ---- sensors.csv
     let sample_count = (rows.len() - 1) as u64;
-    let sensors_info = if sensor_source.is_some() && samples_with_data > 0 {
+    let any_source = sensor_source.is_some() || windows_sensors.is_some();
+    let sensors_info = if any_source && samples_with_data > 0 {
         run::write_lines(&run_dir.join("sensors.csv"), &rows)
             .map_err(|e| format!("cannot write sensors.csv: {e}"))?;
         SensorsInfo {
-            source: Some("librehardwaremonitor".into()),
+            // The same names as the PowerShell collector's manifest.
+            source: Some(
+                if windows_sensors.is_some() {
+                    "windows"
+                } else {
+                    "librehardwaremonitor"
+                }
+                .into(),
+            ),
             interval_seconds: args.interval,
             file: Some("sensors.csv".into()),
             samples: sample_count,
         }
     } else {
-        if sensor_source.is_some() {
+        if any_source {
             log.warn("No sensor reading was recorded, so sensors.csv was not written.");
         }
         SensorsInfo {

@@ -6,8 +6,10 @@ run format as the PowerShell collector (`docs/run-format.md`), so the analyzer
 and the dashboard read it unchanged. It exists to find out whether a native
 collector disturbs a running game less than PowerShell does (plan Step 5.1).
 
-It does **not** replace `collector/`: it reads no specs, events or disk health,
-and has no Windows-counter fallback when LibreHardwareMonitor is not running.
+It does **not** replace `collector/`: it reads no specs, events or disk health.
+When LibreHardwareMonitor is not running it falls back to Windows' own
+counters (load, speed, RAM, GPU load - no temperatures), like the PowerShell
+collector, but without `nvidia-smi`.
 
 **Read-only.** It changes no settings and installs nothing. It reads
 PresentMon's CSV and LibreHardwareMonitor's `data.json`, and writes a folder and
@@ -141,8 +143,14 @@ Known differences from the PowerShell collector:
 - `--process` is required: rows are filtered as they arrive, so the program
   must be known up front (the PowerShell collector can pick the busiest program
   after the capture).
-- No fallback to Windows counters or `nvidia-smi` when LibreHardwareMonitor
-  does not answer: the run then has no `sensors.csv` and says so in `warnings`.
+- When LibreHardwareMonitor does not answer, it reads Windows' counters
+  (`src/winsensors.rs`: PDH under English counter names, and
+  `GlobalMemoryStatusEx`) for CPU load, busiest core, CPU speed, RAM and GPU
+  load, and the manifest says `"source": "windows"`. It does not run
+  `nvidia-smi` (the PowerShell collector does, after checking NVIDIA's
+  signature), so an NVIDIA card's temperature and power are missing then.
+  The counter code has only been compiled for Windows, never run there with
+  a real PC: CI builds and tests it on windows-latest.
 - When several sensors could fill one column (e.g. two GPU fans), it takes the
   first in `data.json` order; the PowerShell collector's tree walk ends up
   taking the last.
