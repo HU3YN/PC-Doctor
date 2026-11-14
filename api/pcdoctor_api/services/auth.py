@@ -64,7 +64,7 @@ def new_token() -> str:
 
 
 def master_exists(db: Session) -> bool:
-    return db.scalar(select(Account.id).limit(1)) is not None
+    return db.scalar(select(Account.id).where(Account.role == "master").limit(1)) is not None
 
 
 def create_session(db: Session, account: Account) -> str:

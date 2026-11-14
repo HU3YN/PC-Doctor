@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from . import metrics
 from .config import Settings, get_settings
 from .db import get_db, migrate, utcnow
-from .services import ingest
+from .services import ingest, notify
 
 JOBS_KEY = "pcdoctor:jobs"
 JOB_PREFIX = "pcdoctor:job:"
@@ -52,6 +52,8 @@ def process_job(db: Session, settings: Settings, job: dict[str, Any]) -> dict[st
         # The uploader holds the key; only its hash ever reaches us.
         result.run.share_hash = share_hash
         db.commit()
+        if result.created:
+            notify.new_guest_run(settings, result.run)
     except ingest.UploadError as error:
         return {"status": "failed", "error": str(error)}
     finally:

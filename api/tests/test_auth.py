@@ -46,6 +46,7 @@ def test_status_setup_and_sign_in_cycle(client, guest):
         "setup_needed": False,
         "signed_in": True,
         "username": "huey",
+        "role": "master",
     }
     assert guest.get("/api/auth/status").json()["signed_in"] is False
 
@@ -164,10 +165,21 @@ MASTER_ONLY = [
     ("get", "/api/assist"),
     ("post", "/api/assist/draft"),
     ("post", "/api/assist/troubleshoot"),
+    ("get", "/api/accounts"),
+    ("delete", "/api/accounts/1"),
+]
+# Any signed-in account may use these, but each sees only what is its own.
+SIGNED_IN = [
+    ("get", "/api/me/runs"),
+    ("get", "/api/me/runs/abc"),
+    ("get", "/api/me/runs/abc/series"),
+    ("delete", "/api/me/runs/abc"),
+    ("get", "/api/auth/identities"),
+    ("delete", "/api/auth/identities/1"),
 ]
 
 
-@pytest.mark.parametrize("method, path", MASTER_ONLY)
+@pytest.mark.parametrize("method, path", MASTER_ONLY + SIGNED_IN)
 def test_everything_stored_needs_a_sign_in(guest, method, path):
     response = getattr(guest, method)(path)
     assert response.status_code == 401, f"{method.upper()} {path} answered {response.status_code}"
@@ -193,10 +205,13 @@ def test_every_api_route_is_either_master_only_or_deliberately_public(client):
         ("GET", "/api/photo-links/{token}"),
         ("POST", "/api/photo-links/{token}/photos"),
         ("GET", "/api/metrics"),  # token only; see test_scale.py
+        ("GET", "/api/auth/oauth"),
+        ("GET", "/api/auth/oauth/{name}/start"),
+        ("GET", "/api/auth/oauth/{name}/callback"),
     }
     import re
 
-    listed = {(m.upper(), re.sub(r"abc|1$", "{x}", p)) for m, p in MASTER_ONLY}
+    listed = {(m.upper(), re.sub(r"abc|1$", "{x}", p)) for m, p in MASTER_ONLY + SIGNED_IN}
     for route in client.app.routes:
         path = getattr(route, "path", "")
         if not path.startswith("/api/") or path in ("/api/docs", "/api/openapi.json"):

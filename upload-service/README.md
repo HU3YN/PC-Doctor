@@ -22,7 +22,7 @@ the same cases.
 | `GET /healthz` | `200` when Redis answers. |
 | `GET /metrics` | Prometheus metrics. Do not publish this path (the k3s ingress does not). |
 
-Open the diagnosis at `/shared/<share_key>` on the dashboard once the job is `done`.
+Open the diagnosis at `/r/<share_key>` on the dashboard once the job is `done`.
 
 ## Settings
 

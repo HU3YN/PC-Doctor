@@ -50,6 +50,7 @@ def status(db: Db, account: MaybeAccount) -> dict[str, Any]:
         "setup_needed": not auth.master_exists(db),
         "signed_in": account is not None,
         "username": account.username if account else None,
+        "role": account.role if account else None,
     }
 
 
@@ -75,7 +76,7 @@ def setup(
     db.commit()
     (settings.data_dir / "setup-code.txt").unlink(missing_ok=True)
     set_cookie(response, request, auth.create_session(db, account))
-    return {"signed_in": True, "username": account.username}
+    return {"signed_in": True, "username": account.username, "role": account.role}
 
 
 @router.post("/login")
@@ -92,7 +93,7 @@ def login(
     if not auth.verify_password(body.password, stored) or account is None:
         raise HTTPException(status_code=401, detail="Wrong username or password.")
     set_cookie(response, request, auth.create_session(db, account))
-    return {"signed_in": True, "username": account.username}
+    return {"signed_in": True, "username": account.username, "role": account.role}
 
 
 @router.post("/logout")

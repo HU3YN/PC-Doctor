@@ -17,9 +17,16 @@ def current_account(request: Request, db: Annotated[Session, Depends(get_db)]) -
     return auth.account_for(db, request.cookies.get(auth.COOKIE))
 
 
-def require_master(account: Annotated[Account | None, Depends(current_account)]) -> Account:
+def require_account(account: Annotated[Account | None, Depends(current_account)]) -> Account:
     if account is None:
         raise HTTPException(status_code=401, detail="Sign in to do this.")
+    return account
+
+
+def require_master(account: Annotated[Account, Depends(require_account)]) -> Account:
+    # Being signed in is not enough: members see only their own runs.
+    if account.role != "master":
+        raise HTTPException(status_code=403, detail="Only the master account can do this.")
     return account
 
 
@@ -33,5 +40,6 @@ def client_key(request: Request, settings: Annotated[Settings, Depends(get_setti
 
 
 Master = Annotated[Account, Depends(require_master)]
+SignedIn = Annotated[Account, Depends(require_account)]
 MaybeAccount = Annotated[Account | None, Depends(current_account)]
 ClientKey = Annotated[str, Depends(client_key)]

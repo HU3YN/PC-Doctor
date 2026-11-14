@@ -22,7 +22,16 @@ from pcdoctor_api import db  # noqa: E402
 from pcdoctor_api.config import get_settings  # noqa: E402
 from pcdoctor_api.main import create_app  # noqa: E402
 
-TABLES = ("photos", "photo_links", "sessions", "accounts", "work_log", "findings", "runs")
+TABLES = (
+    "photos",
+    "photo_links",
+    "sessions",
+    "identities",
+    "accounts",
+    "work_log",
+    "findings",
+    "runs",
+)
 MASTER = {"username": "huey", "password": "correct horse battery"}
 
 
@@ -48,6 +57,18 @@ def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
         yield test_client
     db.reset_engine()
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def session(client):
+    """A database session for looking at what was stored. Always closed: an
+    open session holds locks on PostgreSQL and would block the next test."""
+    database = next(db.get_db())
+    try:
+        yield database
+    finally:
+        database.rollback()
+        database.close()
 
 
 @pytest.fixture

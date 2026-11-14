@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from pcdoctor_analysis import RULES_VERSION
 from sqlalchemy import func, select
@@ -12,7 +22,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..config import Settings, get_settings
 from ..db import get_db
-from ..deps import ClientKey, Master, MaybeAccount
+from ..deps import ClientKey, Master, MaybeAccount, SignedIn
 from ..models import Run, WorkLogEntry
 from ..schemas import (
     FindingOut,
@@ -26,6 +36,7 @@ from ..schemas import (
 )
 from ..services import auth as auth_service
 from ..services import ingest as ingest_service
+from ..services import notify
 from ..services.similarity import Query as SimilarityQuery
 from ..services.similarity import find_similar
 
@@ -114,6 +125,7 @@ def detail(db: Session, run: Run) -> RunDetail:
 @router.post("", response_model=RunUploaded, status_code=201)
 async def upload_run(
     response: Response,
+    background: BackgroundTasks,
     db: Db,
     settings: Config,
     account: MaybeAccount,
@@ -125,7 +137,9 @@ async def upload_run(
 ) -> RunUploaded:
     """Upload a run. Anyone may: a guest gets back a private key for that one
     run and can see nothing else; the master sees every run."""
-    guest = account is None
+    # Only the master's own uploads are "master" runs. Everyone else - no
+    # account, or a member account - is limited and gets a private key.
+    guest = account is None or account.role != "master"
     if guest and not auth_service.guest_uploads.allow(key):
         raise HTTPException(
             status_code=429, detail="Too many uploads from here. Try again in an hour."
@@ -144,7 +158,11 @@ async def upload_run(
         # A fresh key each time; only its hash is kept.
         share_key = auth_service.new_token()
         result.run.share_hash = auth_service.token_hash(share_key)
+        if account is not None and result.created:
+            result.run.owner_id = account.id
         db.commit()
+        if result.created:
+            background.add_task(notify.new_guest_run, settings, result.run)
     return RunUploaded(
         run=RunSummary.model_validate(result.run), duplicate=not result.created, share_key=share_key
     )
@@ -214,6 +232,44 @@ def download_run(run_id: str, db: Db, settings: Config, _: Master) -> FileRespon
 @router.delete("/{run_id}", status_code=204)
 def remove_run(run_id: str, db: Db, settings: Config, _: Master) -> None:
     ingest_service.delete_run(db, settings, get_run(db, run_id))
+
+
+mine = APIRouter(prefix="/api/me", tags=["member"])
+
+
+@mine.get("/runs", response_model=RunList)
+def my_runs(db: Db, account: SignedIn) -> RunList:
+    """The runs this account uploaded. Members see these and nothing else."""
+    runs = list(
+        db.scalars(
+            select(Run).where(Run.owner_id == account.id).order_by(Run.created_at.desc()).limit(200)
+        )
+    )
+    return RunList(items=[RunSummary.model_validate(r) for r in runs], total=len(runs))
+
+
+def own_run(db: Session, run_id: str, account_id: int) -> Run:
+    run = get_run(db, run_id)
+    if run.owner_id != account_id:
+        # The same answer as for a run that does not exist: do not confirm it does.
+        raise HTTPException(status_code=404, detail="Run not found.")
+    return run
+
+
+@mine.get("/runs/{run_id}", response_model=RunDetail)
+def my_run(run_id: str, db: Db, account: SignedIn) -> RunDetail:
+    full = detail(db, own_run(db, run_id, account.id))
+    return full.model_copy(update={"similar_cases": [], "work_log": [], "notes": ""})
+
+
+@mine.get("/runs/{run_id}/series")
+def my_run_series(run_id: str, db: Db, account: SignedIn) -> dict[str, Any]:
+    return (own_run(db, run_id, account.id).result or {}).get("series") or {}
+
+
+@mine.delete("/runs/{run_id}", status_code=204)
+def remove_my_run(run_id: str, db: Db, settings: Config, account: SignedIn) -> None:
+    ingest_service.delete_run(db, settings, own_run(db, run_id, account.id))
 
 
 shared = APIRouter(prefix="/api/shared", tags=["guest"])

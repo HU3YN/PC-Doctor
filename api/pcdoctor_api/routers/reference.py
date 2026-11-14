@@ -76,7 +76,7 @@ def stop_code(code: str, db: Db, account: MaybeAccount) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Stop code not in the built-in list.")
     # The meaning of a stop code is public knowledge; the earlier jobs are the master's.
     matches = []
-    if account is not None:
+    if account is not None and account.role == "master":
         matches = find_similar(
             list(db.scalars(select(WorkLogEntry))), SimilarityQuery(codes=[entry.hex]), limit=10
         )

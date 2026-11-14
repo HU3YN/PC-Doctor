@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from . import __version__, metrics
 from .config import Settings, get_settings
 from .db import get_db, migrate
-from .routers import assist, auth, inbox, intake, reference, runs, worklog
+from .routers import assist, auth, inbox, intake, oauth, reference, runs, worklog
 from .services import auth as auth_service
 
 
@@ -89,6 +89,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(worklog.router)
     app.include_router(intake.router)
     app.include_router(runs.shared)
+    app.include_router(runs.mine)
+    app.include_router(oauth.router)
     app.include_router(auth.router)
     app.include_router(inbox.router)
     app.include_router(assist.router)

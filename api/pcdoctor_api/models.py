@@ -11,7 +11,18 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Date, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,6 +58,10 @@ class Run(Base):
     # SHA-256 of the private link key a guest uses to see this one run. Only
     # the hash is stored, so reading the database does not reveal the links.
     share_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    # The member account that uploaded it, if one did. The master sees every run.
+    owner_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL"), index=True
+    )
 
     # A summary, copied out of the result so lists do not load the big JSON.
     verdict: Mapped[str] = mapped_column(String(10), default="ok", index=True)
@@ -123,7 +138,11 @@ class WorkLogEntry(Base):
 
 
 class Account(Base):
-    """Someone who can sign in. Today there is exactly one: the master."""
+    """Someone who can sign in.
+
+    role "master": the technician - sees everything. There is exactly one.
+    role "member": signed in through Discord or Google - sees only their own runs.
+    """
 
     __tablename__ = "accounts"
 
@@ -131,6 +150,31 @@ class Account(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))  # scrypt, see services/auth.py
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    role: Mapped[str] = mapped_column(String(10), default="master", server_default="master")
+
+    identities: Mapped[list[Identity]] = relationship(
+        back_populates="account", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class Identity(Base):
+    """A Discord or Google sign-in tied to an account.
+
+    Only the provider's own id for the person is kept - no name, no email,
+    no picture. It is enough to recognise them next time and nothing more.
+    """
+
+    __tablename__ = "identities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    provider: Mapped[str] = mapped_column(String(20))
+    subject: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+    account: Mapped[Account] = relationship(back_populates="identities")
+
+    __table_args__ = (UniqueConstraint("provider", "subject", name="uq_identity"),)
 
 
 class LoginSession(Base):

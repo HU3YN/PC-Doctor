@@ -9,7 +9,6 @@ from pcdoctor_analysis import synth
 
 from pcdoctor_api import metrics
 from pcdoctor_api.config import get_settings
-from pcdoctor_api.db import get_db
 from pcdoctor_api.services import auth
 from pcdoctor_api.worker import JOB_PREFIX, handle, process_job
 
@@ -31,9 +30,9 @@ def queue_job(name: str = "healthy", **overrides) -> dict:
     }
 
 
-def test_worker_stores_the_run_and_the_uploader_can_open_it(client, guest):
+def test_worker_stores_the_run_and_the_uploader_can_open_it(client, guest, session):
     job = queue_job("cpu_overheat")
-    db = next(get_db())
+    db = session
     state = process_job(db, get_settings(), job)
     assert state["status"] == "done"
     assert not (get_settings().spool / job["file"]).exists()  # the spool is emptied
@@ -43,8 +42,8 @@ def test_worker_stores_the_run_and_the_uploader_can_open_it(client, guest):
     assert listed[0]["label"] == "bench 3" and listed[0]["verdict"] != "ok"
 
 
-def test_worker_refuses_jobs_that_do_not_add_up(client):
-    db = next(get_db())
+def test_worker_refuses_jobs_that_do_not_add_up(client, session):
+    db = session
     settings = get_settings()
     assert process_job(db, settings, queue_job(sha256="0" * 64))["error"].startswith(
         "The uploaded file was damaged"

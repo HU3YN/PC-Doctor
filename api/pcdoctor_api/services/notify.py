@@ -1,0 +1,31 @@
+"""Tell the master, through a Discord webhook, that a guest sent a run.
+
+Optional (PCDOCTOR_NOTIFY_WEBHOOK_URL). Only the verdict and the headline are
+sent - never the private link, a label, or anything about who sent it.
+"""
+
+from __future__ import annotations
+
+import httpx
+
+from ..config import Settings
+from ..models import Run
+
+ALLOWED_PREFIXES = ("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/")
+
+
+def message_for(run: Run) -> str:
+    return f"New guest run ({run.verdict}): {run.headline}"[:1900]
+
+
+def new_guest_run(settings: Settings, run: Run) -> bool:
+    url = settings.notify_webhook_url
+    if not url or not url.startswith(ALLOWED_PREFIXES):
+        return False
+    try:
+        # allowed_mentions: a headline can never ping anyone.
+        body = {"content": message_for(run), "allowed_mentions": {"parse": []}}
+        httpx.post(url, json=body, timeout=5.0).raise_for_status()
+    except httpx.HTTPError:
+        return False  # a notification failing must never fail an upload
+    return True

@@ -32,7 +32,7 @@ curl -F file=@PCDoctor-run.zip -F label="bench 1" http://localhost:8090/upload
 ```
 
 The reply has a `status_url` (ask it until it says `done`) and a `share_key`:
-open `http://localhost:8080/shared/<share_key>`.
+open `http://localhost:8080/r/<share_key>`.
 
 Stop it with:
 

@@ -47,6 +47,20 @@ class Settings(BaseSettings):
     spool_dir: Path | None = None
     # Prometheus may read /api/metrics only with this token. Empty = no metrics.
     metrics_token: str = ""
+    # --- Sign-in with Discord or Google (Phase 4). Optional.
+    # The address people use to reach this server, e.g. https://pcdoctor.example.com.
+    # OAuth needs it to build the "come back here" address; it is never guessed
+    # from the request.
+    public_url: str = ""
+    discord_client_id: str = ""
+    discord_client_secret: str = ""
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    # False: only identities the master has linked can sign in. True: anyone
+    # who signs in gets their own member account (sees only their own runs).
+    oauth_signup: bool = False
+    # A Discord webhook that is told when a guest uploads a run (headline only).
+    notify_webhook_url: str = ""
     # Extra origins allowed to call the API from a browser (comma separated).
     # The Vite dev server proxies /api, so this is normally empty.
     cors_origins: list[str] = []
