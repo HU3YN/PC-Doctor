@@ -141,7 +141,7 @@ export function App() {
               </button>
             </span>
           ) : member ? (
-            <button className="btn quiet" onClick={() => logout.mutate()}>
+            <button className="btn quiet" onClick={() => logout.mutate()} title={`Signed in as ${auth.data.username}`}>
               Sign out
             </button>
           ) : (

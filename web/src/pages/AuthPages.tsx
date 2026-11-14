@@ -31,6 +31,19 @@ export function ProviderButtons({ intent }: { intent: "login" | "link" }) {
   );
 }
 
+/** Under the provider buttons: what they are for, so the password form below reads as the technician's. */
+function ProviderNote() {
+  const oauth = useQuery({ queryKey: ["oauth"], queryFn: api.oauth, staleTime: Infinity });
+  if (!oauth.data || oauth.data.providers.length === 0) return null;
+  return (
+    <p className="muted small">
+      {oauth.data.signup
+        ? "Use Discord or Google to see the runs you uploaded. Only the account's id is stored."
+        : "Discord or Google work only for accounts the technician has linked."}
+    </p>
+  );
+}
+
 export function LoginPage() {
   const [params] = useSearchParams();
   const problem = PROBLEMS[params.get("problem") ?? ""];
@@ -56,7 +69,10 @@ export function LoginPage() {
       <h1>Sign in</h1>
       {problem && <div className="notice warn">{problem}</div>}
       <ProviderButtons intent="login" />
-      <p className="muted small">For the technician. Runs, the work log and photos are only visible here.</p>
+      <ProviderNote />
+      <p className="muted small">
+        The technician signs in here. Runs, the work log and photos are only visible after signing in.
+      </p>
       <label className="field">
         Username
         <input required autoFocus autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} />
