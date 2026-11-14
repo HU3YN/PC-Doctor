@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -132,4 +133,42 @@ func FuzzCleanRun(f *testing.F) {
 			t.Fatal("accepted an upload with no files")
 		}
 	})
+}
+
+// A small zip that unpacks to a lot must not be held in memory unpacked:
+// the upload service runs with a memory limit (deploy/k8s/app.yaml).
+func TestZipBombIsNotHeldInMemoryUnpacked(t *testing.T) {
+	const unpacked = 300 << 20 // 300 MB of zeros, under a 1 GB limit
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	entry, err := writer.Create("presentmon.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Write([]byte("Application,MsBetweenPresents\n")); err != nil {
+		t.Fatal(err)
+	}
+	zeros := make([]byte, 1<<20)
+	for i := 0; i < unpacked>>20; i++ {
+		if _, err := entry.Write(zeros); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	clean, _, err := CleanRun(archive.Bytes(), 1<<30)
+	runtime.ReadMemStats(&after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocated := after.TotalAlloc - before.TotalAlloc
+	t.Logf("zip %d KB, cleaned %d KB, allocated %d MB", archive.Len()>>10, len(clean)>>10, allocated>>20)
+	if allocated > 64<<20 {
+		t.Fatalf("checking a %d MB bomb allocated %d MB: it is being held unpacked", unpacked>>20, allocated>>20)
+	}
 }

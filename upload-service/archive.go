@@ -9,7 +9,6 @@ package main
 import (
 	"archive/zip"
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -79,86 +78,96 @@ func CleanRun(data []byte, maxUnpacked int64) ([]byte, []string, error) {
 	if len(data) == 0 {
 		return nil, nil, reject("The uploaded file is empty.")
 	}
-	files := map[string][]byte{}
+	// The cleaned run is written as we read. Each file goes straight from the
+	// upload into a new zip, compressed again, so a zip bomb never sits in
+	// memory unpacked: memory follows the compressed size, not the unpacked one.
+	var out bytes.Buffer
+	writer := zip.NewWriter(&out)
 	if !isZip(data) {
 		if !looksLikePresentMonCSV(data) {
 			return nil, nil, reject("This is not a PC Doctor run. Upload the .zip the collector made, or a PresentMon .csv file.")
 		}
-		files["presentmon.csv"] = data
-	} else {
-		archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+		if int64(len(data)) > maxUnpacked {
+			return nil, nil, reject("The run unpacks to more than %d MB, which is over the limit.", maxUnpacked/(1024*1024))
+		}
+		entry, err := writer.Create("presentmon.csv")
 		if err != nil {
-			return nil, nil, reject("The zip file is damaged and cannot be opened.")
+			return nil, nil, err
 		}
-		if len(archive.File) > maxArchiveEntries {
-			return nil, nil, reject("The zip has far more files than a PC Doctor run contains.")
+		if _, err := entry.Write(data); err != nil {
+			return nil, nil, err
 		}
-		// Files at the top level or inside one folder. The shallower copy wins.
-		type pick struct {
-			file  *zip.File
-			depth int
+		if err := writer.Close(); err != nil {
+			return nil, nil, err
 		}
-		chosen := map[string]pick{}
-		for _, file := range archive.File {
-			if file.FileInfo().IsDir() {
-				continue
-			}
-			name, depth := splitName(file.Name)
-			if !runFiles[name] || depth > 2 {
-				continue
-			}
-			if previous, seen := chosen[name]; !seen || depth < previous.depth {
-				chosen[name] = pick{file, depth}
-			}
-		}
-		if len(chosen) == 0 {
-			return nil, nil, reject("No PC Doctor files were found in this zip (expected manifest.json, specs.json, events.json, ...).")
-		}
-		tooBig := reject("The run unpacks to more than %d MB, which is over the limit.", maxUnpacked/(1024*1024))
-		var declared uint64
-		for _, p := range chosen {
-			declared += p.file.UncompressedSize64
-		}
-		if declared > uint64(maxUnpacked) {
-			return nil, nil, tooBig
-		}
-		var written int64
-		for name, p := range chosen {
-			if p.file.Flags&0x1 != 0 {
-				return nil, nil, reject("The zip is password-protected.")
-			}
-			reader, err := p.file.Open()
-			if err != nil {
-				return nil, nil, reject("The zip file is damaged and cannot be opened.")
-			}
-			// Read one byte past what is left of the budget to notice an overrun.
-			content, err := io.ReadAll(io.LimitReader(reader, maxUnpacked-written+1))
-			reader.Close()
-			if err != nil && !errors.Is(err, io.EOF) {
-				return nil, nil, reject("The zip file is damaged and cannot be opened.")
-			}
-			written += int64(len(content))
-			if written > maxUnpacked {
-				return nil, nil, tooBig
-			}
-			files[name] = content
-		}
+		return out.Bytes(), []string{"presentmon.csv"}, nil
 	}
 
-	names := make([]string, 0, len(files))
-	for name := range files {
+	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, nil, reject("The zip file is damaged and cannot be opened.")
+	}
+	if len(archive.File) > maxArchiveEntries {
+		return nil, nil, reject("The zip has far more files than a PC Doctor run contains.")
+	}
+	// Files at the top level or inside one folder. The shallower copy wins.
+	type pick struct {
+		file  *zip.File
+		depth int
+	}
+	chosen := map[string]pick{}
+	for _, file := range archive.File {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+		name, depth := splitName(file.Name)
+		if !runFiles[name] || depth > 2 {
+			continue
+		}
+		if previous, seen := chosen[name]; !seen || depth < previous.depth {
+			chosen[name] = pick{file, depth}
+		}
+	}
+	if len(chosen) == 0 {
+		return nil, nil, reject("No PC Doctor files were found in this zip (expected manifest.json, specs.json, events.json, ...).")
+	}
+	tooBig := reject("The run unpacks to more than %d MB, which is over the limit.", maxUnpacked/(1024*1024))
+	var declared uint64
+	for _, p := range chosen {
+		if p.file.Flags&0x1 != 0 {
+			return nil, nil, reject("The zip is password-protected.")
+		}
+		declared += p.file.UncompressedSize64
+	}
+	if declared > uint64(maxUnpacked) {
+		return nil, nil, tooBig
+	}
+	names := make([]string, 0, len(chosen))
+	for name := range chosen {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	var out bytes.Buffer
-	writer := zip.NewWriter(&out)
+	var written int64
 	for _, name := range names {
+		reader, err := chosen[name].file.Open()
+		if err != nil {
+			return nil, nil, reject("The zip file is damaged and cannot be opened.")
+		}
 		entry, err := writer.Create(name)
 		if err != nil {
+			reader.Close()
 			return nil, nil, err
 		}
-		if _, err := entry.Write(files[name]); err != nil {
-			return nil, nil, err
+		// Copy one byte past what is left of the budget to notice an overrun:
+		// the size a zip declares can lie.
+		copied, err := io.Copy(entry, io.LimitReader(reader, maxUnpacked-written+1))
+		reader.Close()
+		written += copied
+		if written > maxUnpacked {
+			return nil, nil, tooBig
+		}
+		if err != nil {
+			return nil, nil, reject("The zip file is damaged and cannot be opened.")
 		}
 	}
 	if err := writer.Close(); err != nil {
