@@ -93,6 +93,22 @@ jobs:
       - name: Photo evaluation on drawn screens (a plumbing check, not a read rate)
         run: python eval/photo_eval.py --synthetic 10
 
+  sensor-node:
+    name: sensor node (host tests and receiver)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Firmware protocol and SHT31 code, built and tested on the host
+        run: make -C sensor-node/firmware/test_host && make -C sensor-node/firmware/test_host tool
+      - run: pip install pytest ruff
+      - run: ruff check sensor-node && ruff format --check sensor-node
+      - name: Receiver (also parses packets made by the compiled C encoder)
+        working-directory: sensor-node/receiver
+        run: python -m pytest -q
+
   web:
     name: dashboard
     runs-on: ubuntu-latest

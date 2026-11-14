@@ -1,6 +1,7 @@
 /*
- * Command-line wrapper around the C packet code, used by the Python tests to
- * prove that the firmware's encoder and the receiver's parser agree.
+ * Command-line wrapper around the C packet code, for poking at packets and
+ * sensor frames by hand. Build it with `make tool`. (The receiver's pytest
+ * suite compiles its own tiny C program against the same encoder.)
  *
  *   pcd_tool encode <node_id> <seq> <uptime_ms> <temp_centi> <hum_centi> <flags>
  *       prints the 22 packet bytes as hex

@@ -1,0 +1,37 @@
+[project]
+name = "pcdoctor-case-sensor"
+version = "0.1.0"
+description = "Receiver for the PC Doctor case-sensor node (standard library only)"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[project.scripts]
+pcdoctor-case-sensor = "case_sensor.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["case_sensor"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Lets the tests import case_sensor without installing anything.
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+# The CRC loops keep the if/else of the C code, so the two read side by side.
+ignore = ["SIM108"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test data reads better on one line.
+"tests/*" = ["E501"]

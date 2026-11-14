@@ -117,8 +117,18 @@ TEST(sht31_frame_datasheet_word_in_both_halves)
     int16_t t = 0;
     uint16_t h = 0;
     CHECK_EQ(pcd_sht31_parse_frame(frame, 6, &t, &h), PCD_SHT31_OK);
-    CHECK_EQ(t, 8559); /* 0xBEEF = 48879 -> 85.59 C */
-    CHECK_EQ(h, 7459); /* -> 74.59 % */
+    /* 0xBEEF = 48879. Worked through the datasheet formulas (section 4.13):
+     *   T  = -45 + 175 * 48879 / 65535 = -45 + 130.52300 = 85.52300 C -> 8552
+     *   RH =       100 * 48879 / 65535 =                    74.58457 % -> 7458
+     * Both round DOWN to the nearest hundredth (.523 and .457 are below .5).
+     * The integer code gives the same: (17500 * 48879 + 32767) / 65535 =
+     * 13052 (truncated), minus 4500 = 8552; (10000 * 48879 + 32767) / 65535 =
+     * 7458. An earlier version of this test expected 8559 and 7459, which
+     * matches no reading of the formula (dividing by 65536 instead gives
+     * 85.521 and 74.583, still 8552 and 7458) - the test was wrong, not the
+     * conversion. */
+    CHECK_EQ(t, 8552);
+    CHECK_EQ(h, 7458);
 }
 
 TEST(sht31_frame_bad_temperature_crc_is_rejected_and_outputs_untouched)
