@@ -360,13 +360,20 @@ if ($UploadUrl -and $zipPath) {
     try {
         $answer = Send-PCDoctorRun -ZipPath $zipPath -Url $UploadUrl -Label $Label
         # A guest upload comes back with the key of a private link to this one run.
-        if ($answer.share_key) {
-            $link = '{0}/r/{1}' -f $UploadUrl.TrimEnd('/'), $answer.share_key
+        $link = Get-PCDoctorResultLink -BaseUrl $UploadUrl -Answer $answer
+        if (-not $link) {
+            Write-Host '  Uploaded, but the server did not send back a usable link. Open the dashboard to see the run.' -ForegroundColor Yellow
+        } elseif ($answer.share_key) {
             Write-Host "  Uploaded. Your private diagnosis link:" -ForegroundColor Green
             Write-Host "  $link" -ForegroundColor Green
-            if ([Environment]::UserInteractive -and -not $NonInteractive) { Start-Process $link }
+            if ($isAdmin) {
+                # Never start a browser from an administrator process: copy the link instead.
+                Write-Host '  Open it in your browser (it is not opened from here, because this window runs as administrator).'
+            } elseif ([Environment]::UserInteractive -and -not $NonInteractive) {
+                Start-Process $link
+            }
         } else {
-            Write-Host ('  Uploaded. Diagnosis: {0}/runs/{1}' -f $UploadUrl.TrimEnd('/'), $answer.run.id) -ForegroundColor Green
+            Write-Host "  Uploaded. Diagnosis: $link" -ForegroundColor Green
         }
         Write-Host ('  {0}: {1}' -f ([string]$answer.run.verdict).ToUpperInvariant(), $answer.run.headline)
     } catch {

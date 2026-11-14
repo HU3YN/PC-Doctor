@@ -275,6 +275,26 @@ Describe 'Only signed tools are run' {
     }
 }
 
+Describe 'The link after an upload' {
+    It 'is built only from parts with the expected shape' {
+        $guest = [pscustomobject]@{ share_key = 'k3Jv9Qp_2xZr-7LmN0aBcDeFgHiJkLmN'; run = [pscustomobject]@{ id = 'a' * 32 } }
+        Get-PCDoctorResultLink -BaseUrl 'http://192.168.1.20:8080/' -Answer $guest | Should -Be 'http://192.168.1.20:8080/r/k3Jv9Qp_2xZr-7LmN0aBcDeFgHiJkLmN'
+        $master = [pscustomobject]@{ share_key = $null; run = [pscustomobject]@{ id = '0123456789abcdef0123456789abcdef' } }
+        Get-PCDoctorResultLink -BaseUrl 'https://pc.example.com' -Answer $master | Should -Be 'https://pc.example.com/runs/0123456789abcdef0123456789abcdef'
+    }
+
+    It 'gives no link for a hostile or broken answer' {
+        foreach ($key in @('x', '../../evil', 'abc def ghi jkl mno', 'aaaaaaaaaaaaaaaa?x=1', "aaaaaaaaaaaaaaaa`nfile:///")) {
+            $answer = [pscustomobject]@{ share_key = $key; run = [pscustomobject]@{ id = 'a' * 32 } }
+            Get-PCDoctorResultLink -BaseUrl 'http://localhost:8080' -Answer $answer | Should -BeNullOrEmpty
+        }
+        $odd = [pscustomobject]@{ share_key = $null; run = [pscustomobject]@{ id = 'calc.exe' } }
+        Get-PCDoctorResultLink -BaseUrl 'http://localhost:8080' -Answer $odd | Should -BeNullOrEmpty
+        $good = [pscustomobject]@{ share_key = 'k3Jv9Qp_2xZr-7LmN0aBcDeFgHiJkLmN'; run = $null }
+        Get-PCDoctorResultLink -BaseUrl 'file:///C:/Windows' -Answer $good | Should -BeNullOrEmpty
+    }
+}
+
 Describe 'Reading this PC' {
     It 'reads specs without names or serial numbers' {
         $specs = Get-PCDoctorSpecs

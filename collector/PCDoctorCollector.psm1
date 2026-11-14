@@ -925,4 +925,23 @@ function Send-PCDoctorRun {
     }
 }
 
+function Get-PCDoctorResultLink {
+    # The address of the diagnosis after an upload, built only from parts that
+    # have the expected shape: an http(s) server, a private key of URL-safe
+    # characters or a 32-character run id. Anything else from the server gives
+    # no link at all, so a hostile answer cannot make the collector open some
+    # other address.
+    param([string]$BaseUrl, $Answer)
+    $base = $BaseUrl.TrimEnd('/')
+    if ($base -notmatch '^https?://[^\s/?#]+$') { return $null }
+    $key = [string]$Answer.share_key
+    if ($key) {
+        if ($key -cmatch '^[A-Za-z0-9_-]{16,128}$') { return "$base/r/$key" }
+        return $null
+    }
+    $id = [string]$Answer.run.id
+    if ($id -cmatch '^[0-9a-f]{32}$') { return "$base/runs/$id" }
+    return $null
+}
+
 Export-ModuleMember -Function *-PCDoctor*
