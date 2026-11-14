@@ -3,12 +3,14 @@ import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-ro
 
 import { api } from "./api";
 import { ErrorNotice, Loading } from "./components/Bits";
+import { AccountPage } from "./pages/AccountPage";
 import { LoginPage, SetupPage } from "./pages/AuthPages";
 import { DeadPcPage } from "./pages/DeadPcPage";
 import { GetCollectorPage } from "./pages/GetCollectorPage";
 import { GuestHome } from "./pages/GuestHome";
 import { InboxPage } from "./pages/InboxPage";
 import { LookupPage } from "./pages/LookupPage";
+import { MemberHome } from "./pages/MemberHome";
 import { RunPage } from "./pages/RunPage";
 import { RunsPage } from "./pages/RunsPage";
 import { SnapPage } from "./pages/SnapPage";
@@ -58,7 +60,7 @@ export function App() {
   const inbox = useQuery({
     queryKey: ["inbox"],
     queryFn: api.inbox,
-    enabled: Boolean(auth.data?.signed_in),
+    enabled: auth.data?.role === "master",
     refetchInterval: 15000,
   });
   const navigate = useNavigate();
@@ -95,7 +97,9 @@ export function App() {
       </main>
     );
   }
-  const master = auth.data.signed_in;
+  // Signed in is not enough: a member sees only their own runs.
+  const master = auth.data.role === "master";
+  const member = auth.data.signed_in && !master;
   const waiting = inbox.data?.waiting ?? 0;
 
   return (
@@ -116,11 +120,12 @@ export function App() {
               <NavLink to="/lookup">Look up</NavLink>
               <NavLink to="/wont-start">Won&apos;t start</NavLink>
               <NavLink to="/get">Get collector</NavLink>
+              <NavLink to="/account">Account</NavLink>
             </nav>
           ) : (
             <nav className="nav" aria-label="Main">
               <NavLink to="/" end>
-                Check a PC
+                {member ? "My runs" : "Check a PC"}
               </NavLink>
               <NavLink to="/lookup">Look up a stop code</NavLink>
               <NavLink to="/wont-start">Won&apos;t start</NavLink>
@@ -135,10 +140,14 @@ export function App() {
                 Sign out
               </button>
             </span>
+          ) : member ? (
+            <button className="btn quiet" onClick={() => logout.mutate()}>
+              Sign out
+            </button>
           ) : (
             !auth.data.setup_needed && (
               <Link to="/login" className="btn">
-                Master sign-in
+                Sign in
               </Link>
             )
           )}
@@ -163,8 +172,18 @@ export function App() {
             <Route path="/lookup" element={<LookupPage />} />
             <Route path="/wont-start" element={<DeadPcPage />} />
             <Route path="/get" element={<GetCollectorPage />} />
+            <Route path="/account" element={<AccountPage />} />
             <Route path="/login" element={<RunsPage />} />
             <Route path="*" element={<NotFound />} />
+          </Routes>
+        ) : member ? (
+          <Routes>
+            <Route path="/" element={<MemberHome />} />
+            <Route path="/runs/:id" element={<RunPage mine />} />
+            <Route path="/r/:key" element={<RunPage shared />} />
+            <Route path="/lookup" element={<LookupPage />} />
+            <Route path="/wont-start" element={<DeadPcPage guest />} />
+            <Route path="*" element={<MemberHome />} />
           </Routes>
         ) : (
           <Routes>

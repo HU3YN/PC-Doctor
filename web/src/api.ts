@@ -218,6 +218,26 @@ export interface AuthStatus {
   setup_needed: boolean;
   signed_in: boolean;
   username: string | null;
+  role: "master" | "member" | null;
+}
+
+export interface OAuthInfo {
+  providers: { name: string; label: string }[];
+  signup: boolean;
+}
+
+export interface AccountRow {
+  id: number;
+  username: string;
+  role: string;
+  created_at: string;
+  providers: string[];
+}
+
+export interface LinkedIdentity {
+  id: number;
+  provider: string;
+  linked_at: string;
 }
 
 export interface PhotoNotes {
@@ -362,6 +382,16 @@ export const api = {
   login: (body: { username: string; password: string }) =>
     request<AuthStatus>("/api/auth/login", json("POST", body)),
   logout: () => request<AuthStatus>("/api/auth/logout", { method: "POST" }),
+
+  oauth: () => request<OAuthInfo>("/api/auth/oauth"),
+  identities: () => request<LinkedIdentity[]>("/api/auth/identities"),
+  unlinkIdentity: (id: number) => request<void>(`/api/auth/identities/${id}`, { method: "DELETE" }),
+  accounts: () => request<AccountRow[]>("/api/accounts"),
+  removeAccount: (id: number) => request<void>(`/api/accounts/${id}`, { method: "DELETE" }),
+  myRuns: () => request<{ items: RunSummary[]; total: number }>("/api/me/runs"),
+  myRun: (id: string) => request<RunDetail>(`/api/me/runs/${id}`),
+  mySeries: (id: string) => request<Series>(`/api/me/runs/${id}/series`),
+  deleteMyRun: (id: string) => request<void>(`/api/me/runs/${id}`, { method: "DELETE" }),
 
   sharedRun: (key: string) => request<RunDetail>(`/api/shared/${encodeURIComponent(key)}`),
   sharedSeries: (key: string) => request<Series>(`/api/shared/${encodeURIComponent(key)}/series`),

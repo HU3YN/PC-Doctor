@@ -194,3 +194,15 @@ def test_cli_run_report_json_frames_and_rules(tmp_path, capsys):
     assert "fault types" in capsys.readouterr().out
     assert main([str(tmp_path / "missing")]) == 2
     assert main(["frames", str(tmp_path / "specs.json")]) == 2
+
+
+def test_hostile_json_is_skipped_not_fatal(tmp_path):
+    """Found by fuzzing: a number thousands of digits long, or very deep
+    nesting, used to crash the loader instead of becoming a note."""
+    from pcdoctor_analysis import analyze_run_dir
+
+    (tmp_path / "manifest.json").write_text('{"a": ' + "9" * 5000 + "}")
+    (tmp_path / "specs.json").write_text("[" * 100_000 + "]" * 100_000)
+    result = analyze_run_dir(tmp_path)
+    assert any("manifest.json could not be read" in note for note in result.notes)
+    assert any("specs.json could not be read" in note for note in result.notes)

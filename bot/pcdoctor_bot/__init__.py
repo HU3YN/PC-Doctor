@@ -1,0 +1,1 @@
+"""PC Doctor Discord bot."""

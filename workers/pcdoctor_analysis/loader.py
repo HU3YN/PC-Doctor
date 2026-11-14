@@ -82,7 +82,9 @@ def _read_json(path: Path, notes: list[str]) -> Any:
     try:
         # utf-8-sig: Windows PowerShell 5.1 writes a byte-order mark.
         return json.loads(path.read_text(encoding="utf-8-sig", errors="replace"))
-    except (json.JSONDecodeError, OSError) as error:
+    # ValueError also covers a number too long to convert; RecursionError a
+    # file nested thousands of levels deep. Both are damaged or hostile files.
+    except (ValueError, RecursionError, OSError) as error:
         notes.append(f"{path.name} could not be read ({error.__class__.__name__}).")
         return None
 

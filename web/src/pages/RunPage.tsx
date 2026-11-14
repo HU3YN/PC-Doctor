@@ -213,19 +213,21 @@ function Troubleshooter({ runId, categories }: { runId: string; categories: Reco
   );
 }
 
-export function RunPage({ shared = false }: { shared?: boolean }) {
+export function RunPage({ shared = false, mine = false }: { shared?: boolean; mine?: boolean }) {
+  // A member looking at their own run sees what a guest sees through a link.
+  const limited = shared || mine;
   const { id = "", key = "" } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
   const run = useQuery({
-    queryKey: shared ? ["shared", key] : ["run", id],
-    queryFn: () => (shared ? api.sharedRun(key) : api.run(id)),
+    queryKey: shared ? ["shared", key] : mine ? ["my-run", id] : ["run", id],
+    queryFn: () => (shared ? api.sharedRun(key) : mine ? api.myRun(id) : api.run(id)),
   });
   const meta = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: Infinity });
   const hasCharts = Boolean(run.data?.has_frames || run.data?.has_sensors);
   const series = useQuery({
-    queryKey: shared ? ["shared-series", key] : ["series", id],
-    queryFn: () => (shared ? api.sharedSeries(key) : api.series(id)),
+    queryKey: shared ? ["shared-series", key] : mine ? ["my-series", id] : ["series", id],
+    queryFn: () => (shared ? api.sharedSeries(key) : mine ? api.mySeries(id) : api.series(id)),
     enabled: hasCharts,
   });
   const [editing, setEditing] = useState(false);
@@ -271,12 +273,12 @@ export function RunPage({ shared = false }: { shared?: boolean }) {
     <div className="stack">
       <div className="page-head">
         <div>
-          {!shared && (
+          {!limited && (
             <Link to="/" className="small">
               &larr; All runs
             </Link>
           )}
-          {shared ? (
+          {limited ? (
             <h1>Your PC&apos;s diagnosis</h1>
           ) : editing ? (
             <form
@@ -324,7 +326,7 @@ export function RunPage({ shared = false }: { shared?: boolean }) {
             {data.is_demo ? " · demo data" : ""}
           </p>
         </div>
-        <div className="row" hidden={shared}>
+        <div className="row" hidden={limited}>
           <Link className="btn primary" to={`/worklog/new?run=${data.id}`}>
             Log this job
           </Link>
@@ -364,7 +366,7 @@ export function RunPage({ shared = false }: { shared?: boolean }) {
         </div>
       )}
 
-      {data.rules_outdated && !shared && (
+      {data.rules_outdated && !limited && (
         <div className="notice warn">
           <span className="grow">This run was analysed with older rules. Analyse it again to apply the current ones.</span>
           <button className="btn" onClick={() => reanalyze.mutate()} disabled={reanalyze.isPending}>
@@ -386,7 +388,7 @@ export function RunPage({ shared = false }: { shared?: boolean }) {
         </section>
       )}
 
-      {!shared && <Troubleshooter runId={data.id} categories={categories} />}
+      {!limited && <Troubleshooter runId={data.id} categories={categories} />}
 
       {(data.similar_cases.length > 0 || data.work_log.length > 0) && (
         <section className="stack" style={{ gap: 12 }}>

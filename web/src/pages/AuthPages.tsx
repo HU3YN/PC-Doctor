@@ -1,12 +1,39 @@
 // Signing in, and creating the master account the first time.
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api";
 import { ErrorNotice } from "../components/Bits";
 
+// Why a Discord or Google sign-in did not go through (set by the server).
+const PROBLEMS: Record<string, string> = {
+  expired: "That sign-in took too long or was not started here. Try again.",
+  provider: "The sign-in service did not confirm who you are. Try again.",
+  not_linked: "That account is not known here. The master has to link it first, or open sign-up.",
+  taken: "That account is already linked to someone else here.",
+};
+
+/** Buttons for the sign-in services this server has been set up with (often none). */
+export function ProviderButtons({ intent }: { intent: "login" | "link" }) {
+  const oauth = useQuery({ queryKey: ["oauth"], queryFn: api.oauth, staleTime: Infinity });
+  const providers = oauth.data?.providers ?? [];
+  if (providers.length === 0) return null;
+  return (
+    <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+      {providers.map((provider) => (
+        // A plain link: the browser has to leave for the provider and come back.
+        <a key={provider.name} className="btn" href={`/api/auth/oauth/${provider.name}/start?intent=${intent}`}>
+          {intent === "link" ? "Link" : "Sign in with"} {provider.label}
+        </a>
+      ))}
+    </div>
+  );
+}
+
 export function LoginPage() {
+  const [params] = useSearchParams();
+  const problem = PROBLEMS[params.get("problem") ?? ""];
   const client = useQueryClient();
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
@@ -26,7 +53,9 @@ export function LoginPage() {
         login.mutate();
       }}
     >
-      <h1>Master sign-in</h1>
+      <h1>Sign in</h1>
+      {problem && <div className="notice warn">{problem}</div>}
+      <ProviderButtons intent="login" />
       <p className="muted small">For the technician. Runs, the work log and photos are only visible here.</p>
       <label className="field">
         Username
