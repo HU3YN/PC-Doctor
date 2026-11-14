@@ -235,6 +235,9 @@ jobs:
           curl -fsS http://localhost:8080/ | grep -q "<title>PC Doctor</title>"
           curl -fsS http://localhost:8080/api/health
           curl -fsS http://localhost:8080/runs/some-run | grep -q "<title>PC Doctor</title>"
+          # nginx sends the security headers with the dashboard, the API with its answers.
+          curl -fsSI http://localhost:8080/ | grep -qi "^content-security-policy: default-src 'self'"
+          curl -fsS -D - -o /dev/null http://localhost:8080/api/health | grep -qi "^referrer-policy: no-referrer"
       - name: Nothing stored is readable without signing in
         run: |
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/runs)" = "401"
