@@ -42,6 +42,17 @@ def test_worker_stores_the_run_and_the_uploader_can_open_it(client, guest, sessi
     assert listed[0]["label"] == "bench 3" and listed[0]["verdict"] != "ok"
 
 
+def test_worker_keeps_the_first_link_when_the_same_file_comes_again(client, guest, session):
+    settings = get_settings()
+    first = process_job(session, settings, queue_job("cpu_overheat"))
+    again = queue_job(
+        "cpu_overheat", label="second person", share_hash=auth.token_hash("second-key")
+    )
+    assert process_job(session, settings, again)["run_id"] == first["run_id"]
+    assert guest.get("/api/shared/the-private-key").json()["label"] == "bench 3"
+    assert guest.get("/api/shared/second-key").json()["label"] == "second person"
+
+
 def test_worker_refuses_jobs_that_do_not_add_up(client, session):
     db = session
     settings = get_settings()

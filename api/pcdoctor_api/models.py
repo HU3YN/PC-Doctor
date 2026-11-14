@@ -55,9 +55,6 @@ class Run(Base):
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
     # Who sent it: "master" (signed in) or "guest" (anyone, without an account).
     source: Mapped[str] = mapped_column(String(10), default="master")
-    # SHA-256 of the private link key a guest uses to see this one run. Only
-    # the hash is stored, so reading the database does not reveal the links.
-    share_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
     # The member account that uploaded it, if one did. The master sees every run.
     owner_id: Mapped[int | None] = mapped_column(
         ForeignKey("accounts.id", ondelete="SET NULL"), index=True
@@ -86,6 +83,30 @@ class Run(Base):
         passive_deletes=True,
     )
     work_log_entries: Mapped[list[WorkLogEntry]] = relationship(back_populates="run")
+    share_keys: Mapped[list[ShareKey]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class ShareKey(Base):
+    """A private link to one run, given to whoever uploaded it.
+
+    Each guest upload gets its own key, even when the same file was uploaded
+    before: a second upload must not break the first person's link, and must
+    not show them the label the first person typed. So the label lives here,
+    with the key. Only the SHA-256 of the key is stored, so reading the
+    database does not reveal the links.
+    """
+
+    __tablename__ = "share_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    label: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+    run: Mapped[Run] = relationship(back_populates="share_keys")
 
 
 class Finding(Base):

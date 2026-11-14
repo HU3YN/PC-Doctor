@@ -11,6 +11,7 @@ disk or to the database - a photo of someone's screen is not ours to keep.
 from __future__ import annotations
 
 import io
+import os
 import shutil
 import time
 from pathlib import Path
@@ -18,6 +19,7 @@ from pathlib import Path
 MAX_PIXELS = 40_000_000  # refuse absurd images before decoding them fully
 MAX_SIDE = 2400  # phone photos are downscaled to this; plenty for screen text
 OCR_SECONDS = 40  # for all the attempts on one photo together
+ENOUGH_LETTERS = 40  # an error screen read this well needs no second attempt
 WINDOWS_TESSERACT = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
 
 
@@ -46,6 +48,9 @@ def _engine():
             "server. The Docker version includes it."
         )
     pytesseract.pytesseract.tesseract_cmd = command
+    # One thread per Tesseract run. Its own threading gains little on a page
+    # this size and becomes many times slower when the machine is busy.
+    os.environ.setdefault("OMP_THREAD_LIMIT", "1")
     return pytesseract, Image
 
 
@@ -87,8 +92,9 @@ def read_text(data: bytes) -> str:
         (dark_text_on_light(screen), "6"),  # 6 = one block of text
         (black_and_white(dark_text_on_light(screen)), "6"),
         (dark_text_on_light(screen), "11"),  # 11 = scattered text
-        (dark_text_on_light(image), "6"),  # the whole photo, in case the crop was wrong
     ]
+    if screen is not image:  # the whole photo too, in case the crop was wrong
+        attempts.append((dark_text_on_light(image), "6"))
     best, deadline = "", time.monotonic() + OCR_SECONDS
     for picture, mode in attempts:
         left = deadline - time.monotonic()
@@ -102,6 +108,8 @@ def read_text(data: bytes) -> str:
             break
         if _letters(text) > _letters(best):
             best = text
+        if _letters(best) >= ENOUGH_LETTERS:
+            break  # a screenful of text: the other attempts will not beat it
     if not best and time.monotonic() >= deadline - 1:
         raise PhotoError("Reading the photo took too long. Try a closer, sharper photo.")
     return best

@@ -30,6 +30,7 @@ TABLES = (
     "accounts",
     "work_log",
     "findings",
+    "share_keys",
     "runs",
 )
 MASTER = {"username": "huey", "password": "correct horse battery"}

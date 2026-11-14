@@ -17,11 +17,13 @@ import time
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import metrics
 from .config import Settings, get_settings
 from .db import get_db, migrate, utcnow
+from .models import ShareKey
 from .services import ingest, notify
 
 JOBS_KEY = "pcdoctor:jobs"
@@ -46,11 +48,13 @@ def process_job(db: Session, settings: Settings, job: dict[str, Any]) -> dict[st
     try:
         if hashlib.sha256(data).hexdigest() != job.get("sha256"):
             return {"status": "failed", "error": "The uploaded file was damaged in storage."}
-        result = ingest.ingest(
-            db, settings, data, label=str(job.get("label") or "")[:200], source="guest"
-        )
-        # The uploader holds the key; only its hash ever reaches us.
-        result.run.share_hash = share_hash
+        label = str(job.get("label") or "")[:200]
+        result = ingest.ingest(db, settings, data, label=label, source="guest")
+        # The uploader holds the key; only its hash ever reaches us. A key of
+        # its own for every upload, so an earlier link to the same run stays.
+        own_label = result.run.label if result.created else label.strip()
+        if db.scalar(select(ShareKey.id).where(ShareKey.key_hash == share_hash)) is None:
+            db.add(ShareKey(run=result.run, key_hash=share_hash, label=own_label))
         db.commit()
         if result.created:
             notify.new_guest_run(settings, result.run)

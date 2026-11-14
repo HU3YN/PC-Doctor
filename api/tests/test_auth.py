@@ -260,8 +260,28 @@ def test_the_share_key_is_not_stored(client, guest):
 
     key = guest.post("/api/runs", files=run_zip()).json()["share_key"]
     with db.get_engine().connect() as connection:
-        stored = connection.execute(text("select share_hash from runs")).scalar_one()
+        stored = connection.execute(text("select key_hash from share_keys")).scalar_one()
     assert stored == auth.token_hash(key) and key not in stored
+
+
+def test_a_second_upload_of_the_same_file_does_not_break_the_first_link(client, guest):
+    client.post("/api/runs", files=run_zip("bad_ram"), data={"label": "master's own note"})
+    first = guest.post("/api/runs", files=run_zip("bad_ram"), data={"label": "first"}).json()
+    second = guest.post("/api/runs", files=run_zip("bad_ram"), data={"label": "second"}).json()
+    assert second["duplicate"] and second["run"]["id"] == first["run"]["id"]
+    assert first["share_key"] != second["share_key"]
+    # Each guest keeps a working link and sees only the label they typed.
+    assert first["run"]["label"] == "first" and second["run"]["label"] == "second"
+    assert guest.get(f"/api/shared/{first['share_key']}").json()["label"] == "first"
+    assert guest.get(f"/api/shared/{second['share_key']}").json()["label"] == "second"
+    # The master's own label stays on the run.
+    assert client.get(f"/api/runs/{first['run']['id']}").json()["label"] == "master's own note"
+
+
+def test_deleting_a_run_removes_its_links(client, guest):
+    shared = guest.post("/api/runs", files=run_zip("bad_ram")).json()
+    assert client.delete(f"/api/runs/{shared['run']['id']}").status_code == 204
+    assert guest.get(f"/api/shared/{shared['share_key']}").status_code == 404
 
 
 def test_guest_uploads_are_rate_limited(client, guest, monkeypatch):

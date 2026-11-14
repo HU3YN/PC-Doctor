@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..config import Settings, get_settings
 from ..db import get_db
 from ..deps import ClientKey, Master, MaybeAccount, SignedIn
-from ..models import Run, WorkLogEntry
+from ..models import Run, ShareKey, WorkLogEntry
 from ..schemas import (
     FindingOut,
     RunDetail,
@@ -173,18 +173,25 @@ async def upload_run(
     if not result.created:
         response.status_code = 200
     share_key = None
+    summary = RunSummary.model_validate(result.run)
     if guest:
-        # A fresh key each time; only its hash is kept.
+        # A fresh key for every upload; only its hash is kept. Earlier keys to
+        # the same run keep working.
         share_key = auth_service.new_token()
-        result.run.share_hash = auth_service.token_hash(share_key)
+        own_label = result.run.label if result.created else label.strip()[:200]
+        add_share_key(db, result.run, auth_service.token_hash(share_key), own_label)
         if account is not None and result.created:
             result.run.owner_id = account.id
         db.commit()
         if result.created:
             background.add_task(notify.new_guest_run, settings, result.run)
-    return RunUploaded(
-        run=RunSummary.model_validate(result.run), duplicate=not result.created, share_key=share_key
-    )
+        # Never echo a label someone else typed for the same file.
+        summary = summary.model_copy(update={"label": own_label})
+    return RunUploaded(run=summary, duplicate=not result.created, share_key=share_key)
+
+
+def add_share_key(db: Session, run: Run, key_hash: str, label: str) -> None:
+    db.add(ShareKey(run=run, key_hash=key_hash, label=label))
 
 
 @router.get("", response_model=RunList)
@@ -294,24 +301,31 @@ def remove_my_run(run_id: str, db: Db, settings: Config, account: SignedIn) -> N
 shared = APIRouter(prefix="/api/shared", tags=["guest"])
 
 
-def run_for_key(db: Session, key: str) -> Run:
-    run = db.scalar(
-        select(Run)
-        .where(Run.share_hash == auth_service.token_hash(key))
-        .options(selectinload(Run.findings))
+def key_for(db: Session, key: str) -> ShareKey:
+    found = db.scalar(
+        select(ShareKey)
+        .where(ShareKey.key_hash == auth_service.token_hash(key))
+        .options(selectinload(ShareKey.run).selectinload(Run.findings))
     )
-    if run is None:
+    if found is None:
         raise HTTPException(status_code=404, detail="This link is not valid (or no longer is).")
-    return run
+    return found
+
+
+def run_for_key(db: Session, key: str) -> Run:
+    return key_for(db, key).run
 
 
 @shared.get("/{key}", response_model=RunDetail)
 def read_shared_run(key: str, db: Db) -> RunDetail:
     """One run, for whoever holds its private key. Nothing from the work log
-    and nothing about any other run is included."""
-    run = run_for_key(db, key)
-    full = detail(db, run)
-    return full.model_copy(update={"similar_cases": [], "work_log": [], "notes": ""})
+    and nothing about any other run is included, and the label is the one
+    this key's uploader typed."""
+    share = key_for(db, key)
+    full = detail(db, share.run)
+    return full.model_copy(
+        update={"similar_cases": [], "work_log": [], "notes": "", "label": share.label}
+    )
 
 
 @shared.get("/{key}/series")
