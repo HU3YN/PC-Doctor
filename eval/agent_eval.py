@@ -35,7 +35,9 @@ def cases(with_synthetic: bool) -> list[tuple[str, str, Path | synth.SampleRun, 
     for label_file in sorted(CASES.glob("*/label.json")):
         label = json.loads(label_file.read_text())
         if label.get("cause_category"):
-            found.append(("real", label_file.parent.name, label_file.parent, label["cause_category"]))
+            found.append(
+                ("real", label_file.parent.name, label_file.parent, label["cause_category"])
+            )
     if with_synthetic:
         for sample in synth.build_all():
             if sample.expected:
@@ -94,8 +96,10 @@ def main() -> int:
         score[kind][1] += rules_top == expected
         score[kind][2] += 1
         mark = "pass" if got == expected else "FAIL"
-        print(f"  {mark}  {name}: expected {expected}, agent {got} "
-              f"({answer['confidence']}), rules {rules_top}")
+        print(
+            f"  {mark}  {name}: expected {expected}, agent {got} "
+            f"({answer['confidence']}), rules {rules_top}"
+        )
     for kind, (agent, rules, total) in score.items():
         if total:
             note = "" if kind == "real" else "   (plumbing check only - not an accuracy figure)"

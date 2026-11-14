@@ -73,6 +73,26 @@ jobs:
         run: alembic upgrade head && alembic check
       - run: pytest api -q
 
+  eval:
+    name: evaluation scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            workers/pyproject.toml
+            api/pyproject.toml
+      - name: Tesseract (reads error photos)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr
+      - run: pip install -e workers -e "api[dev]"
+      - run: ruff check eval && ruff format --check eval
+      - run: python -m pytest eval/tests -q
+      - name: Photo evaluation on drawn screens (a plumbing check, not a read rate)
+        run: python eval/photo_eval.py --synthetic 10
+
   web:
     name: dashboard
     runs-on: ubuntu-latest

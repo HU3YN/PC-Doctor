@@ -39,7 +39,9 @@ def judge(found: set[str], expected: list[str], must_not: list[str]) -> tuple[bo
 def real_cases() -> list[tuple[str, Path, dict]]:
     cases = []
     for label_file in sorted(CASES.glob("*/label.json")):
-        cases.append((label_file.parent.name, label_file.parent, json.loads(label_file.read_text())))
+        cases.append(
+            (label_file.parent.name, label_file.parent, json.loads(label_file.read_text()))
+        )
     return cases
 
 
@@ -66,7 +68,10 @@ def run(real_only: bool) -> int:
         note = "" if kind == "real" else "   (plumbing check only - not an accuracy figure)"
         print(f"{kind.capitalize()} cases: {passed}/{len(rows)} correct{note}")
         for name, ok, problems in rows:
-            print(f"  {'pass' if ok else 'FAIL'}  {name}" + ("" if ok else f"  - {'; '.join(problems)}"))
+            print(
+                f"  {'pass' if ok else 'FAIL'}  {name}"
+                + ("" if ok else f"  - {'; '.join(problems)}")
+            )
         if kind == "real" and not rows:
             print("  none yet - see docs/fault-testing.md for how to make them safely")
         failed += len(rows) - passed

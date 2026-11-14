@@ -197,7 +197,10 @@ def judge(expected: int | None, found: set[int]) -> str:
 
 
 def server_reader(data: bytes) -> set[int]:
-    """Exactly what the inbox does with an upload: OCR, then interpret."""
+    """Exactly what the server does with a photo (POST /api/photos in routers/intake.py):
+    photo.read_text, then errortext.interpret; the codes it shows are the known
+    stop codes plus any unknown hex codes. Nothing here re-implements a step.
+    """
     from pcdoctor_api.services import photo
 
     reading = interpret(photo.read_text(data))
@@ -253,11 +256,11 @@ def summary_lines(results: list[Result]) -> list[str]:
     lines.append(f"Photos labeled with a stop code: {len(with_code)}")
     if with_code:
         for outcome in (CORRECT, WRONG, NOT_READ, UNREADABLE):
-            lines.append(f"  {outcome + ':':<17}{count(with_code, outcome)} of {len(with_code)}")
+            lines.append(f"  {outcome + ':':<19}{count(with_code, outcome)} of {len(with_code)}")
     lines.append(f"Photos labeled as showing no stop code: {len(without)}")
     if without:
         for outcome in (NOTHING, INVENTED, UNREADABLE):
-            lines.append(f"  {outcome + ':':<17}{count(without, outcome)} of {len(without)}")
+            lines.append(f"  {outcome + ':':<19}{count(without, outcome)} of {len(without)}")
     sources = sorted({r.label.source for r in with_code if r.label.source})
     if len(sources) > 1:
         lines.append("Read correctly, by source:")
@@ -284,7 +287,8 @@ def photo_line(result: Result) -> str:
     return line
 
 
-def report(results: list[Result], out=sys.stdout) -> None:
+def report(results: list[Result], out=None) -> None:
+    out = sys.stdout if out is None else out  # looked up now, so redirection works
     for result in results:
         print(photo_line(result), file=out)
     print(file=out)
@@ -335,7 +339,10 @@ def _screen_lines(rng: random.Random, kind: str, code: int | None) -> list[str]:
     # A start-up screen with no stop code at all: the reader must report nothing.
     return rng.choice(
         (
-            ["Reboot and Select proper Boot device", "or Insert Boot Media in selected Boot device"],
+            [
+                "Reboot and Select proper Boot device",
+                "or Insert Boot Media in selected Boot device",
+            ],
             ["Preparing Automatic Repair", "Diagnosing your PC"],
             ["No bootable device found.", "Press any key to restart the machine."],
         )
@@ -353,9 +360,9 @@ def synthetic_image(rng: random.Random, kind: str, code: int | None):
     draw = ImageDraw.Draw(image)
     size = rng.randrange(26, 44)
     font = _font(rng, size)
-    y = rng.randrange(120, 240)
+    x, y = rng.randrange(90, 140), rng.randrange(120, 240)
     for line in _screen_lines(rng, kind, code):
-        draw.text((rng.randrange(90, 140), y), line, fill=(255, 255, 255), font=font)
+        draw.text((x, y), line, fill=(255, 255, 255), font=font)
         y += int(size * 1.5)
 
     # Moire-like pattern: a phone sensor photographing a pixel grid shows faint stripes.
@@ -367,16 +374,25 @@ def synthetic_image(rng: random.Random, kind: str, code: int | None):
             stripe_draw.line([(x, 0), (x - height // 3, height)], fill=(255, 255, 255), width=step)
         image = Image.blend(image, stripes, rng.uniform(0.03, 0.10))
 
+    # The image stands for a photo cropped to the screen: whatever the skew and
+    # rotation uncover is filled with the screen's own colour, not a black
+    # bezel. (The reader currently returns nothing when a dark border frames
+    # the screen - that is a reader problem for real photos to measure, not
+    # something a plumbing check should hide behind.)
     # Perspective-like skew: pull the corners of the source rectangle in or out.
     jitter = rng.randrange(0, 50)
     corners = []
     for cx, cy in ((0, 0), (0, height), (width, height), (width, 0)):
         corners += [cx + rng.randint(-jitter, jitter), cy + rng.randint(-jitter, jitter)]
     image = image.transform(
-        (width, height), Image.Transform.QUAD, corners, Image.Resampling.BICUBIC, fillcolor=(0, 0, 0)
+        (width, height),
+        Image.Transform.QUAD,
+        corners,
+        Image.Resampling.BICUBIC,
+        fillcolor=background,
     )
     image = image.rotate(
-        rng.uniform(-4, 4), resample=Image.Resampling.BICUBIC, expand=True, fillcolor=(0, 0, 0)
+        rng.uniform(-4, 4), resample=Image.Resampling.BICUBIC, expand=True, fillcolor=background
     )
     image = image.filter(ImageFilter.GaussianBlur(rng.uniform(0.0, 1.6)))
     return ImageEnhance.Brightness(image).enhance(rng.uniform(0.6, 1.3))
@@ -426,7 +442,8 @@ def _require_ocr() -> None:
         ) from None
 
 
-def run_folder(folder: Path, reader: Reader, out=sys.stdout) -> list[Result]:
+def run_folder(folder: Path, reader: Reader, out=None) -> list[Result]:
+    out = sys.stdout if out is None else out
     if not folder.is_dir():
         raise UsageError(f"{folder} is not a folder")
     labels_path = folder / LABELS_NAME
