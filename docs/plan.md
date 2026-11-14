@@ -4,7 +4,7 @@ This file is the handoff between work sessions. To continue, start a session
 on this repository and say: "Read docs/plan.md and carry out 'Plan for the next
 session', starting at Step 0."
 
-## Where things stand (2026-11-14, branch `claude/dreamy-bohr-fser6e`)
+## Where things stand (2026-11-14, evening, branch `claude/dreamy-bohr-fser6e`)
 
 Every phase of [the roadmap](roadmap.md) now has code that passes its tests
 in CI. Almost none of it has met real hardware, real photos, real accounts or
@@ -27,72 +27,72 @@ numbers.
 | 6 (Phase 10) | `eval/photo_eval.py` runs and is tested; `ml/leds` debug-LED classifier (not wired into the API) |
 | 7 | README, roadmap, results, new `testing.md`, `ml/` and `eval/` READMEs, this file |
 
-### Known gaps in what was built
+### Done in the second session of 2026-11-14 (the plan's Steps 0-2)
 
-- The Rust collector has no Windows performance-counter or `nvidia-smi`
-  fallback when LibreHardwareMonitor is not running (the PowerShell one has).
-- The live-session batch limit is counted per API process even with Redis.
-- A member who uploads a file that is already stored gets a working private
-  link, but the run does not appear under "My runs" (it already has an owner,
-  or none). Decide whether that is right.
-- The LED model is undertrained even on synthetic data (117 of 300 right,
-  172 "not sure"); it needs real photos, not tuning.
-- `ml/frames` labels "stutter" against the generator's known base frame time;
-  whether that matches what players feel is an assumption.
+| Item | What was done |
+|---|---|
+| Threat model #2 | The collector runs PresentMon and nvidia-smi only with a valid Intel / NVIDIA signature, and skips the PATH when elevated; the server ships only the pinned PresentMon |
+| #12 | The collector builds the result link only from well-formed parts and never opens a browser from an administrator window |
+| #16 | Photos: JPEG, PNG and WebP only; images over the pixel limit refused |
+| #17 | Discord/Google sign-in off unless the public address is HTTPS (or local/private) |
+| #18 | Redis rate-limit counters get their expiry in the same transaction (Python and Go) |
+| #10, #14 | Redis password (Compose scale stack and k3s); no default secrets; weak metrics tokens refused |
+| #13 | Security headers and a strict CSP from the API and nginx, checked in a browser |
+| #1 | Reproducible collector zip, a release workflow that attests and publishes it, the hash on the Get page; PresentMon a separate download |
+| Step 2 | Live batch limit shared through Redis; members see a run they uploaded even if someone uploaded the file first; the Rust collector falls back to Windows' counters |
+
+### Known gaps
+
+- The release workflow has never run: it runs on a `collector-v*` tag.
+- The Rust collector's Windows-counter fallback was compiled for Windows and
+  tested in CI, never run on a real PC; it has no `nvidia-smi` (that needs a
+  publisher signature check in Rust).
+- Still open in the threat model: plain HTTP in LAN mode (#3), no session
+  revocation or password change (#11), unpinned Python dependencies (#15),
+  keys in access logs (#19), no NetworkPolicy in k3s (#10, part).
+- The LED model needs real photos; the frame-time model needs real cases.
 
 ## Plan for the next session (execute in this order)
 
 Rules for whoever executes this: the project rules at the bottom apply.
 Commit and push after each step; after each push read the CI result (both
-`ci` and `security` workflows) and fix failures before going on. Never write a
-number into `docs/results.md` or a README unless it was measured, and say
-where. Helper agents may be used for self-contained folders, but tell each to
-leave committing to the main session, so nothing is lost if one is cut off by
-a usage limit (this happened once on 2026-11-14 and no work was lost because
-of that rule).
+`ci` and `security` workflows) and fix failures before going on. Pushing
+again cancels a running CI run, so wait for one to finish before the next
+push when a step depends on it. Never write a number into `docs/results.md`
+or a README unless it was measured, and say where.
 
 ### Step 0 - Confirm the starting point
 
-1. `git pull`; check that the latest `ci` and `security` runs passed,
-   including the two `rust capture collector` jobs.
-2. Set up as in [testing.md](testing.md) and run `pytest workers -q`,
-   `pytest api -q`, `npm --prefix web test`, `go test ./...` in
-   `upload-service/`, `cargo test` in `collector-rs/`.
+`git pull`; check that the latest `ci` and `security` runs passed; run the
+local suites as in [testing.md](testing.md).
 
-### Step 1 - Close the remaining threat-model items (section 4)
+### Step 1 - With the owner: real hardware first
 
-In this order, each with a test:
+The code is ahead of the evidence. Walk through
+[testing.md](testing.md#what-only-the-owner-can-prove) with the owner, in
+order, starting with a capture on their gaming PC. Fix what real hardware
+shows, and record every measurement in [results.md](results.md) with its
+context. Ask the owner before pushing the first `collector-v1.0.0` tag (it
+publishes a release).
 
-1. **#2** `PCDoctorCollector.psm1:Find-PCDoctorPresentMon`: check the pinned
-   SHA-256 and Intel's signature before running PresentMon; drop the `PATH`
-   fallback for PresentMon and `nvidia-smi` when elevated. Pester tests run
-   on real Windows in CI.
-2. **#12** `Collect-PCDoctor.ps1`: validate the returned `share_key` and do
-   not open the browser from the elevated process (print the link instead).
-3. **#16** `services/photo.py`: accept only JPEG, PNG and WebP, and make the
-   decompression-bomb warning an error.
-4. **#17** refuse a non-HTTPS `PCDOCTOR_PUBLIC_URL` for a non-local host.
-5. **#18** make the Redis rate-limit counter atomic (Python and Go).
-6. **#10, #14** Redis password in the scale stack and k8s; refuse the default
-   metrics token when the API is not on localhost.
-7. **#13** security headers and a CSP in `web/nginx.conf` (check the
-   dashboard still works in a browser).
-8. **#1** section 5: a tag-triggered release workflow that builds the
-   collector zip reproducibly, attests it (`actions/attest-build-provenance`)
-   and publishes the SHA-256; `/api/collector.zip` serves the same bytes.
+### Step 2 - Remaining threat-model items
 
-### Step 2 - Smaller follow-ups
+1. **#11** a "sign out everywhere" button (delete the account's sessions) and
+   a password change for the master, with tests.
+2. **#15** a lock file for the Python dependencies (`pip-compile` or `uv
+   lock`) used by the Dockerfiles; pin the base images by digest.
+3. **#3** HTTPS on the LAN: document `mkcert` or a reverse proxy with a local
+   certificate, or offer it from `Start-PCDoctor.ps1`.
+4. **#10** a NetworkPolicy in `deploy/k8s` so only the API, worker and
+   upload service reach Redis and PostgreSQL.
+5. **#19** keep share keys and live tokens out of the access logs (log the
+   route template, not the path).
 
-1. Share the live-session batch limit through Redis.
-2. Decide the member duplicate-upload behaviour (above) and test it.
-3. Rust collector: the Windows performance-counter fallback, matching the
-   PowerShell collector's `sensors.csv` columns.
+### Step 3 - Smaller follow-ups
 
-### Step 3 - Help the owner test on real hardware
-
-Not code: walk through [testing.md](testing.md#what-only-the-owner-can-prove)
-with the owner, in the order there. Record every measurement in
-[results.md](results.md) with its context, and fix what real hardware shows.
+1. `nvidia-smi` in the Rust collector, after a signature check
+   (`WinVerifyTrust` plus the signer's name).
+2. After real cases exist: retrain `ml/frames`, and compare with the rule.
 
 ## Rules for the project
 

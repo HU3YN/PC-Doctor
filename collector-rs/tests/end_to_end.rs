@@ -296,8 +296,19 @@ fn a_silent_sensor_source_is_a_warning_not_a_failure() {
     );
     let manifest: Value =
         serde_json::from_str(&fs::read_to_string(run_dir.join("manifest.json")).unwrap()).unwrap();
-    assert_eq!(manifest["capture"]["sensors"]["source"], Value::Null);
-    assert!(!run_dir.join("sensors.csv").exists());
+    if cfg!(windows) {
+        // Windows' own counters stand in: loads and RAM, no temperatures.
+        assert_eq!(manifest["capture"]["sensors"]["source"], "windows");
+        let csv = fs::read_to_string(run_dir.join("sensors.csv")).unwrap();
+        let header: Vec<&str> = csv.lines().next().unwrap().split(',').collect();
+        let first: Vec<&str> = csv.lines().nth(1).unwrap().split(',').collect();
+        let cell = |name: &str| first[header.iter().position(|h| *h == name).unwrap()];
+        assert!(!cell("ram_used_pct").is_empty(), "{csv}");
+        assert!(cell("cpu_temp_c").is_empty(), "{csv}");
+    } else {
+        assert_eq!(manifest["capture"]["sensors"]["source"], Value::Null);
+        assert!(!run_dir.join("sensors.csv").exists());
+    }
     let warnings: Vec<&str> = manifest["warnings"]
         .as_array()
         .unwrap()

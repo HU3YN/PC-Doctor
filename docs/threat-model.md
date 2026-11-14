@@ -1,8 +1,8 @@
 # Threat model
 
 Written from the code at commit `1ae894f` (November 2026), not from the plans,
-and updated on 2026-11-14 after the fixes listed in section 4 and the
-additions in section 3.9.
+and updated on 2026-11-14 (twice) after the fixes marked in section 4 and
+the additions in section 3.9.
 Every mitigation below names the file and function that does it; if you change
 one of them, change this page too. "Open" means it is not handled today.
 
@@ -172,8 +172,8 @@ each with a test; they stay in the table so the history is visible.
 
 | # | Item | Where | Set-up | Why this rank |
 |---|---|---|---|---|
-| 1 | The collector is fetched and run with no integrity check, as administrator; in LAN mode it travels over plain HTTP | `routers/intake.py:collector_zip`, `collector/PCDoctor.cmd` | LAN | Someone on the LAN gets admin code execution on every PC checked. Section 5 is the plan. |
-| 2 | `PresentMon*.exe` is not re-verified, neither when the server zips it nor when the collector runs it; PATH fallback for `PresentMon.exe` and `nvidia-smi.exe` | `intake.py:collector_zip`, `PCDoctorCollector.psm1:Find-PCDoctorPresentMon`, `Find-PCDoctorNvidiaSmi` | All | Same outcome as #1 by a different door; easy to fix (check hash + signature before `Start-Process`, drop the PATH fallback when elevated). |
+| 1 | **Fixed in part (2026-11-14):** the collector zip is built reproducibly (`services/collector_build.py`) and `.github/workflows/release-collector.yml` attests and publishes it with its SHA-256; the server serves the same bytes and shows the hash; `collector/README.md` says how to check. Still open: in LAN mode the download is plain HTTP, and only someone who checks is protected (section 5). Was: The collector is fetched and run with no integrity check, as administrator; in LAN mode it travels over plain HTTP | `routers/intake.py:collector_zip`, `collector/PCDoctor.cmd` | LAN | Someone on the LAN gets admin code execution on every PC checked. Section 5 is the plan. |
+| 2 | **Fixed:** `Find-PCDoctorPresentMon` and `Find-PCDoctorNvidiaSmi` run only a file with a valid Intel / NVIDIA signature (`Test-PCDoctorSignedBy`) and skip the PATH when elevated; the server ships only the pinned PresentMon. Was: `PresentMon*.exe` is not re-verified, neither when the server zips it nor when the collector runs it; PATH fallback for `PresentMon.exe` and `nvidia-smi.exe` | `intake.py:collector_zip`, `PCDoctorCollector.psm1:Find-PCDoctorPresentMon`, `Find-PCDoctorNvidiaSmi` | All | Same outcome as #1 by a different door; easy to fix (check hash + signature before `Start-Process`, drop the PATH fallback when elevated). |
 | 3 | Plain HTTP in LAN mode: session cookie, share keys, photo tokens and run data in clear | `Start-PCDoctor.ps1 -Lan`, `docker-compose.yml` | LAN | Documented and deliberate, but a LAN attacker can take the master's session. |
 | 4 | **Fixed:** `PCDOCTOR_PROXY_HOPS` (2 in `deploy/k8s/app.yaml`) skips exactly our own proxies in `deps.py:client_key`; `test_the_rate_limit_address_skips_only_our_own_proxies`. Was: Rate-limit key is the proxy's address in k8s (Traefik -> nginx -> API) | `deps.py:client_key` with `web/nginx.conf` | Cloud | **Bug.** Anyone can lock the master out of password sign-in and use up guest uploads for everyone. Fix with nginx `set_real_ip_from` + `real_ip_header`, or count back a configured number of hops. |
 | 5 | **Fixed:** `CleanRun` copies each file straight into the new zip; a 300 MB bomb now allocates about 1 MB (`TestZipBombIsNotHeldInMemoryUnpacked`). Was: Upload service keeps up to 1 GB of unpacked files in memory; pod limit is 768 Mi | `upload-service/archive.go:CleanRun`, `deploy/k8s/app.yaml` | Cloud, scale stack | **Bug.** A small zip bomb OOM-kills the upload service. Stream to a temp file as the Python side does, or lower the default limit well under the container limit. |
@@ -181,22 +181,24 @@ each with a test; they stay in the table so the history is visible.
 | 7 | **Fixed:** a run has one key per guest upload (`share_keys` table), each with its uploader's own label; `test_a_second_upload_of_the_same_file_does_not_break_the_first_link`. Was: A duplicate upload replaces the share key; the earlier link dies and the re-uploader sees the run's label | `routers/runs.py:upload_run`, `worker.py:process_job` | All | **Bug** (untested behaviour). Keep the existing share hash, or store several keys per run. |
 | 8 | **Fixed:** `notify.escape` escapes the headline like the bot does; tested in `test_oauth.py`. Was: Discord webhook text is not escaped; a guest can post masked links in the master's channel | `services/notify.py:message_for` | When the webhook is set | Phishing in a trusted channel. Reuse the bot's `escape`. |
 | 9 | **Fixed:** set-up attempts are rate-limited, the code is 64 bits, and a partial unique index allows one master. Was: `/api/auth/setup` has no rate limit; two simultaneous setups can make two masters | `routers/auth.py:setup` | LAN/cloud before setup | Small window, but the fix is one line (`login_attempts.allow`) plus a lock or unique check. |
-| 10 | Redis without a password; no NetworkPolicy | `docker-compose.scale.yml`, `deploy/k8s/data.yaml` | Scale/cloud | Needs a foothold inside the network first. |
+| 10 | **Fixed in part:** Redis requires a password in the scale stack and k3s (checked in CI). Still open: no NetworkPolicy. Was: Redis without a password; no NetworkPolicy | `docker-compose.scale.yml`, `deploy/k8s/data.yaml` | Scale/cloud | Needs a foothold inside the network first. |
 | 11 | Session and link management: 30-day sessions, no revoke, no password change/reset; photo links and share keys cannot be revoked | `services/auth.py`, `routers/inbox.py`, `routers/runs.py` | All | Limits recovery after a leak. |
-| 12 | Collector opens the browser from the elevated process; `share_key` from the server is not checked | `collector/Collect-PCDoctor.ps1` (upload block) | All | Elevated browser; validate the key with `^[A-Za-z0-9_-]{16,128}$` and open the link de-elevated (or just print it when elevated). |
-| 13 | No security headers or CSP in the Compose nginx | `web/nginx.conf` | Local/LAN | React escaping covers most of it; `SameSite=Lax` covers framing with a session. Note that "same site" ignores the port: other services on the same host (Grafana on :3000 in the scale stack) count as same-site. |
-| 14 | Default passwords and metrics token | `docker-compose*.yml` | LAN | Postgres is not published; the metrics token is reachable through nginx. |
+| 12 | **Fixed:** `Get-PCDoctorResultLink` builds the link only from well-formed parts, and an elevated collector prints it instead of opening it. Was: Collector opens the browser from the elevated process; `share_key` from the server is not checked | `collector/Collect-PCDoctor.ps1` (upload block) | All | Elevated browser; validate the key with `^[A-Za-z0-9_-]{16,128}$` and open the link de-elevated (or just print it when elevated). |
+| 13 | **Fixed:** a strict CSP, `Referrer-Policy: no-referrer`, nosniff, `X-Frame-Options: DENY` from the API and nginx (`web/security-headers.conf`), checked in a browser and in CI. Was: No security headers or CSP in the Compose nginx | `web/nginx.conf` | Local/LAN | React escaping covers most of it; `SameSite=Lax` covers framing with a session. Note that "same site" ignores the port: other services on the same host (Grafana on :3000 in the scale stack) count as same-site. |
+| 14 | **Fixed:** the scale stack has no default secrets (Compose stops without them) and the API refuses a short or well-known metrics token. Was: Default passwords and metrics token | `docker-compose*.yml` | LAN | Postgres is not published; the metrics token is reachable through nginx. |
 | 15 | Python dependencies unpinned; Actions and images pinned by tag | `api/pyproject.toml`, `.github/workflows/*.yml`, Dockerfiles | Build | Supply-chain drift; add a lock file and the planned `security.yml`. |
-| 16 | Pillow accepts any format; 40-80 M pixel images are decoded with only a warning | `services/photo.py:to_jpeg`, `read_text` | Behind a photo link or master | Pass `formats=("JPEG", "PNG", "WEBP")` to `Image.open` and turn the warning into an error. |
-| 17 | `PCDOCTOR_PUBLIC_URL` may be `http://` for a non-local host | `services/oauth.py:configured` | Cloud | Flow cookie without `Secure`; docs say it must be HTTPS. |
-| 18 | Redis `INCR`/`EXPIRE` not atomic | `services/auth.py:RateLimiter.allow`, `upload-service/queue.go:redisQueue.Allow` | Scale | Rare permanent block of one key; use `SET NX EX` + `INCR` in a pipeline or a Lua script. |
+| 16 | **Fixed:** only JPEG, PNG and WebP are decoded and the pixel-limit warning is an error (`photo.open_photo`). Was: Pillow accepts any format; 40-80 M pixel images are decoded with only a warning | `services/photo.py:to_jpeg`, `read_text` | Behind a photo link or master | Pass `formats=("JPEG", "PNG", "WEBP")` to `Image.open` and turn the warning into an error. |
+| 17 | **Fixed:** sign-in is off unless the public address is HTTPS (or local/private HTTP) (`oauth.public_url_ok`). Was: `PCDOCTOR_PUBLIC_URL` may be `http://` for a non-local host | `services/oauth.py:configured` | Cloud | Flow cookie without `Secure`; docs say it must be HTTPS. |
+| 18 | **Fixed:** `SET NX EX` and `INCR` in one MULTI/EXEC, in Python and Go. Was: Redis `INCR`/`EXPIRE` not atomic | `services/auth.py:RateLimiter.allow`, `upload-service/queue.go:redisQueue.Allow` | Scale | Rare permanent block of one key; use `SET NX EX` + `INCR` in a pipeline or a Lua script. |
 | 19 | Share keys and photo tokens in access logs | nginx, uvicorn | All | Logs are on the master's own server. |
 | 20 | **Fixed:** the launcher now says it uses plain HTTP. Was: Out-of-date LAN warning in the launcher | `Start-PCDoctor.ps1` | LAN | Wrong text, not a hole. |
 
 ## 5. Plan: signing the collector zip without a paid certificate
 
-**Status: plan, not done.** There is no release workflow yet (only
-`.github/workflows/ci.yml` and `windows-facts.yml`).
+**Status: built on 2026-11-14, not run yet** (it runs on a `collector-v*`
+tag). The steps below are what `.github/workflows/release-collector.yml` and
+`api/pcdoctor_api/services/collector_build.py` do; PresentMon became a
+separate download (`/api/collector/presentmon.zip`).
 
 The goal is that a technician can prove the collector they are about to run as
 administrator is exactly what this repository's release workflow built from a

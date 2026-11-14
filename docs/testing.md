@@ -22,7 +22,7 @@ cannot.
 | Analysis only | `pcdoctor-analyze path\to\run-folder-or.zip` | `pytest workers -q`; `pcdoctor-analyze rules` |
 | Dashboard (dev server) | `npm --prefix web run dev` (with the API on port 8000) | `npm --prefix web test`, `npm --prefix web run lint`, `npm --prefix web run typecheck` |
 | Collector (PowerShell) | On the PC: double-click `collector\PCDoctor.cmd` | Windows only: `Invoke-Pester collector/tests` (Pester 5) |
-| Queue path and monitoring | `docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --build`; see [deploy/README.md](../deploy/README.md) | CI's `docker compose` job does the same end to end |
+| Queue path and monitoring | Set `REDIS_PASSWORD`, `PCDOCTOR_METRICS_TOKEN` and `GRAFANA_PASSWORD` in `.env`, then `docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --build`; see [deploy/README.md](../deploy/README.md) | CI's `docker compose` job does the same end to end |
 | Go upload service | `cd upload-service && go run .` | `cd upload-service && go test -race ./...`; fuzz: `go test -run xxx -fuzz=FuzzCleanRun -fuzztime=60s .` |
 | Load test | `k6 run deploy/loadtest/upload.js` (after `python deploy/loadtest/make_run.py`) | - |
 | Discord bot | `cd bot && pip install -e ".[dev]"`, set its variables ([bot/README.md](../bot/README.md)), `python -m pcdoctor_bot` | `cd bot && python -m pytest -q` |
@@ -38,6 +38,7 @@ cannot.
 | Diagnosis scoring | `python eval/run_eval.py` (`--real-only` once real cases exist) | - |
 | Photo reader scoring | `python eval/photo_eval.py` (needs `eval/photos/labels.csv`); `--synthetic 40` for a plumbing check | `pytest eval/tests -q` |
 | Fuzz tests | Long run: `PCDOCTOR_FUZZ_PROFILE=long pytest -c fuzz/pytest.ini fuzz` (Windows: `$env:PCDOCTOR_FUZZ_PROFILE="long"` first) | Short run: `pytest -c fuzz/pytest.ini fuzz` |
+| Collector release | Push a tag: `git tag collector-v1.0.0 && git push origin collector-v1.0.0` (or "Run workflow" on `release collector` to build and attest without a release) | `gh attestation verify PCDoctor-collector.zip --repo HU3YN/PC-Doctor`; the zip's SHA-256 equals the one on the Get page of a server at the same commit |
 | Security checks | - | `pip-audit --skip-editable`, `npm --prefix web audit --omit=dev`, `govulncheck ./...` in `upload-service`, `gitleaks git .` - all run weekly in `.github/workflows/security.yml` |
 
 For the ML folders, use their own environment so the large PyTorch install
@@ -65,6 +66,8 @@ accounts. Each of these is untested until the owner does it:
 | Discord and Google sign-in | Your Discord and Google developer apps | Sign in, then check **Account** shows the identity |
 | The Discord bot | A server whose moderators approved it | `/diagnose` with a run zip replies with a summary |
 | The start script's Docker route | Windows with Docker Desktop | `Start-PCDoctor.cmd` opens the dashboard |
+| The first collector release | Push a `collector-v...` tag | The release has the zip and its hash, and `gh attestation verify` passes |
+| The Rust collector's Windows-counter fallback | Your PC with LibreHardwareMonitor closed | `sensors.csv` has CPU load, speed, RAM and GPU load; the manifest says `"source": "windows"` |
 | Cloud hosting | An AWS account and a domain, HTTPS only | [deploy/README.md](../deploy/README.md) section 3 |
 | k6 throughput | Your PC or the cloud server | Record requests per second and error rate at a stated load |
 | The model and LED reader on real data | Real labeled cases and LED photos | The same scripts with real data; record counts, not just percentages |

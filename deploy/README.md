@@ -14,7 +14,15 @@ cluster. Read them before you use them, and expect to fix things the first time.
 
 ## 1. The queue path and monitoring on your own computer
 
-Needs Docker Desktop running.
+Needs Docker Desktop running, and three secrets in `.env` (the scale stack
+has no default passwords, so it will not start without them). Make each one
+with `python -c "import secrets; print(secrets.token_urlsafe(24))"`:
+
+```
+REDIS_PASSWORD=...
+PCDOCTOR_METRICS_TOKEN=...
+GRAFANA_PASSWORD=...
+```
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --build
@@ -23,7 +31,7 @@ docker compose -f docker-compose.yml -f docker-compose.scale.yml up -d --build
 - Dashboard: http://localhost:8080 (as before)
 - Upload service: http://localhost:8090
 - Prometheus: http://localhost:9090 (Status > Targets should show three "UP")
-- Grafana: http://localhost:3000 - sign in as `admin` / `pcdoctor`, open the "PC Doctor" dashboard
+- Grafana: http://localhost:3000 - sign in as `admin` with your `GRAFANA_PASSWORD`, open the "PC Doctor" dashboard
 
 Send a run through the queue and open its private link:
 
