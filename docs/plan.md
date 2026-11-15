@@ -52,20 +52,30 @@ numbers.
 | #15 | The API image installs from a hashed lock file (`api/lock.py`); every image pinned by digest |
 | nvidia-smi | The Rust collector reads an NVIDIA card through System32's nvidia-smi when it is signed by NVIDIA. CI on real Windows found the check failing when started from PowerShell 7 (inherited `PSModulePath`); fixed and tested against catalog-signed notepad.exe |
 
+### Done on 2026-11-15, second part (the first real run)
+
+| Item | What was done |
+|---|---|
+| Real run | The owner's PC, quick mode: collector clean, no personal data, analyzer read everything (results.md, "First run on real hardware") |
+| Analysis | Double full stop in stop-code summaries fixed (test over every code); a disk error followed within 30 minutes by a blue-screen record is called "possibly one incident" in both findings (hedged: the record's time is the restart); disk errors name the drive from its Windows disk number |
+| Collector | Records each disk's Windows number and each RAM module's bank (channel) label - passed on the real Windows runner |
+| #11 | The master can revoke a single private link or phone photo link (run page, Photos page) |
+| Fix | `open_photo` no longer changes Pillow's process-wide pixel limit |
+
 ### Known gaps
 
-- The owner's PC has run the collector once, in quick mode (see
-  results.md, "First run on real hardware"). A 5-minute capture with
+- The owner's PC has run only a quick check. A 5-minute capture with
   PresentMon and LibreHardwareMonitor is still missing. The owner's PC is not
   offered to cloud sessions, so runs come as zips attached to the chat.
+- The first real run's findings (disk retry on "Disk 3", 0x9F blue screen,
+  25 October) are not confirmed by the owner.
 - The repository's default branch is still `claude/festive-cray-nw5hzp`:
-  until this branch is merged there, the weekly security run, Dependabot and
-  the manual release run are not active.
+  until this branch is merged, the weekly security run, Dependabot and the
+  manual release run are not active.
 - The release workflow has never run (needs a `collector-v*` tag).
-- Single links (a share key, a photo link) cannot be revoked on their own.
 - The API image fetches the build backend for this repository's own two
-  packages without a hash, and nginx's error log can still show a full
-  request line (with a key) when the API is down.
+  packages without a hash; nginx's error log can still show a full request
+  line when the API is down.
 - The LED model needs real photos; the frame-time model needs real cases.
 
 ## Plan for the next session (execute in this order)
@@ -84,11 +94,18 @@ committing.
 
 ### Step 1 - The owner's hardware (needs the owner)
 
-Either the owner's PC is offered to the session (`list_computer_folders`
-shows it under `folders`), or the owner attaches a capture zip. Then: analyze
-it with `pcdoctor-analyze`, compare with what the PC really is, fix what
-real hardware shows, and record measurements in [results.md](results.md).
-Then walk through the rest of [testing.md](testing.md#what-only-the-owner-can-prove).
+1. Ask the owner the three questions about the first run: is the monitor
+   really 60 Hz (Windows reports 59 Hz)? Was a USB drive or card reader
+   attached on 25 October? Did the blue screen happen around sleep or
+   shutdown? With answers and the owner's yes, make it the first real case
+   in `eval/cases/` (the raw zip is not committed without that yes).
+2. When the owner attaches a new run (a capture, ideally): first look at the
+   new `memory.modules[].bank` values. If they tell the two channels apart
+   (e.g. "P0 CHANNEL A" / "P0 CHANNEL B"), extend `memory.single_channel` to
+   flag two or more sticks on one channel (wrong slots). Do not write that
+   rule before seeing real labels. Also check `physical_disks[].number`.
+3. Analyze the capture with `pcdoctor-analyze`, compare with the real PC, fix
+   what real hardware shows, record measurements in results.md.
 
 ### Step 2 - With the owner's yes
 
@@ -99,8 +116,7 @@ Then walk through the rest of [testing.md](testing.md#what-only-the-owner-can-pr
 
 ### Step 3 - Small follow-ups
 
-1. Revoke a single share key or photo link from the master's views.
-2. After real cases exist: retrain `ml/frames` and compare with the rule.
+1. After real cases exist: retrain `ml/frames` and compare with the rule.
 
 ## Rules for the project
 
