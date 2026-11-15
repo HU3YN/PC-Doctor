@@ -60,6 +60,25 @@ had a double full stop, and the display reports 59 Hz (Windows' usual name
 for a 60 Hz mode). Still missing: a 5-minute capture with PresentMon and
 LibreHardwareMonitor.
 
+### Second real run: a 5-minute capture (2026-11-15)
+
+Same PC, PowerShell collector in **capture** mode, 300 samples at 1 per
+second. Made with an older copy of the collector (before the disk-number and
+bank-label fields), without PresentMon (Get-Tools.ps1 not run) and without
+LibreHardwareMonitor, so: no frame times, no CPU temperature; sensors came
+from Windows' counters and nvidia-smi.
+
+| Check | Result |
+|---|---|
+| Collector | Finished the 300 s capture; both missing tools named in its warnings |
+| Privacy | No computer name, user name or serial number in any file |
+| Analyzer | Read every file; the same disk-retry and 0x9F findings as the first run (same events) |
+| What the sensors show | An idle PC: GPU load median about 3% (max 68%), GPU 25-28 C, 18-52 W; CPU load average 7.5%; RAM about 68% in use |
+| What it changed | "GPU-limited" and "CPU-limited performance" had reported "passed" on this idle capture. They now report no data, with a note saying the PC was idle (rules 2026.11.2) |
+
+Still missing: a capture with PresentMon and LibreHardwareMonitor while a
+game runs, with the current collector.
+
 ## Measured so far
 
 Each of these was measured once, in the place named. They describe this

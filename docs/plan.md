@@ -62,10 +62,19 @@ numbers.
 | #11 | The master can revoke a single private link or phone photo link (run page, Photos page) |
 | Fix | `open_photo` no longer changes Pillow's process-wide pixel limit |
 
+### Done on 2026-11-15, third part (the first real capture)
+
+The owner attached a 5-minute capture. It was made with an older copy of the
+collector, without PresentMon and without LibreHardwareMonitor, and with no
+game running (GPU load median 3%). It showed that "GPU-limited" and
+"CPU-limited" reported "passed" on an idle PC; they now report no data with
+a note saying the PC was idle (rules 2026.11.2). Recorded in results.md.
+
 ### Known gaps
 
-- The owner's PC has run only a quick check. A 5-minute capture with
-  PresentMon and LibreHardwareMonitor is still missing. The owner's PC is not
+- The owner's PC has run a quick check and an idle capture. A capture with
+  the **current** collector, PresentMon and LibreHardwareMonitor, while a
+  game is being played, is still missing. The owner's PC is not
   offered to cloud sessions, so runs come as zips attached to the chat.
 - The first real run's findings (disk retry on "Disk 3", 0x9F blue screen,
   25 October) are not confirmed by the owner.
@@ -99,12 +108,17 @@ committing.
    attached on 25 October? Did the blue screen happen around sleep or
    shutdown? With answers and the owner's yes, make it the first real case
    in `eval/cases/` (the raw zip is not committed without that yes).
-2. When the owner attaches a new run (a capture, ideally): first look at the
+2. Before the next run, the owner needs: the current branch
+   (`git pull` on `claude/dreamy-bohr-fser6e` - the last capture came from
+   an older copy), `collector\Get-Tools.ps1` run once, LibreHardwareMonitor
+   running with its web server on, a game started first, and the capture's
+   start delay used to switch to it.
+3. When the owner attaches that run: first look at the
    new `memory.modules[].bank` values. If they tell the two channels apart
    (e.g. "P0 CHANNEL A" / "P0 CHANNEL B"), extend `memory.single_channel` to
    flag two or more sticks on one channel (wrong slots). Do not write that
    rule before seeing real labels. Also check `physical_disks[].number`.
-3. Analyze the capture with `pcdoctor-analyze`, compare with the real PC, fix
+4. Analyze the capture with `pcdoctor-analyze`, compare with the real PC, fix
    what real hardware shows, record measurements in results.md.
 
 ### Step 2 - With the owner's yes
