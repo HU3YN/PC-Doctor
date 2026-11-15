@@ -21,7 +21,7 @@ can check.
 | 6 | Rust capture collector, live streaming, DuckDB build comparison | Built | A run on Windows with a real game; overhead measured against PowerShell |
 | 7 | ESP32 + SHT31 case sensor: firmware, UDP receiver | Built, host tests only | Compiled for the ESP32 and run on the board; loss and sample rate measured |
 | 8 | ONNX export and CPU/GPU benchmark | Built | Run on the owner's PC (with a GPU) |
-| 9 | Fuzzing, threat model, `SECURITY.md`, Dependabot, security workflow, signed-tool checks, CSP, attested collector releases | Built; 10 fuzz-found bugs fixed; every threat-model item fixed or mitigated (#1, #11 and #15 in part) | The first real release; revoking a single link; trying the LAN HTTPS guide |
+| 9 | Fuzzing, threat model, `SECURITY.md`, Dependabot, security workflow, signed-tool checks, CSP, attested collector releases | Built; 10 fuzz-found bugs fixed; every threat-model item fixed or mitigated (#1 and #15 in part) | The first real release; trying the LAN HTTPS guide |
 | 10 | Photo reader (OCR), no-boot checklist, debug-LED model | OCR built; LED model built, synthetic data only | Real photos: read rate, and LED photos to train on |
 
 ## An honest note about the resume

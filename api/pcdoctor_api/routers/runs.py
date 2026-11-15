@@ -1,4 +1,4 @@
-"""Runs: upload, list, read, re-analyse, delete."""
+"""Runs: upload, list, read, re-analyse, delete, and revoke private links."""
 
 from __future__ import annotations
 
@@ -281,6 +281,33 @@ def compare_run(run_id: str, db: Db, _: Master) -> dict[str, Any]:
 @router.delete("/{run_id}", status_code=204)
 def remove_run(run_id: str, db: Db, settings: Config, _: Master) -> None:
     ingest_service.delete_run(db, settings, get_run(db, run_id))
+
+
+@router.get("/{run_id}/links")
+def list_links(run_id: str, db: Db, _: Master) -> list[dict[str, Any]]:
+    """The private links to this run. Only their labels and dates: the key
+    itself was never stored, and its hash is not shown."""
+    run = get_run(db, run_id)
+    keys = db.scalars(select(ShareKey).where(ShareKey.run_id == run.id).order_by(ShareKey.id))
+    return [
+        {
+            "id": key.id,
+            "label": key.label,
+            "created_at": key.created_at,
+            "member": key.account_id is not None,
+        }
+        for key in keys
+    ]
+
+
+@router.delete("/{run_id}/links/{link_id}", status_code=204)
+def revoke_link(run_id: str, link_id: int, db: Db, _: Master) -> None:
+    """Revoke one private link. The run, and every other link to it, stay."""
+    key = db.get(ShareKey, link_id)
+    if key is None or key.run_id != run_id:
+        raise HTTPException(status_code=404, detail="Link not found.")
+    db.delete(key)
+    db.commit()
 
 
 mine = APIRouter(prefix="/api/me", tags=["member"])

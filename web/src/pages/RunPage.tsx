@@ -270,6 +270,63 @@ function Comparison({ runId }: { runId: string }) {
   );
 }
 
+/** The private links to this run (master only): who was given one, and a way
+ *  to revoke a single link without deleting the run. */
+function PrivateLinks({ runId }: { runId: string }) {
+  const client = useQueryClient();
+  const links = useQuery({ queryKey: ["run-links", runId], queryFn: () => api.runLinks(runId) });
+  const revoke = useMutation({
+    mutationFn: (linkId: number) => api.revokeRunLink(runId, linkId),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["run-links", runId] }),
+  });
+  if (links.error) return <ErrorNotice error={links.error} />;
+  const items = links.data ?? [];
+  if (items.length === 0) return null;
+  return (
+    <section className="card stack" style={{ gap: 10 }}>
+      <h2>Private links</h2>
+      <p className="muted small">
+        Everyone who uploaded this file got their own link to it. Revoking one stops that link working; the run
+        and the other links stay.
+      </p>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Label they typed</th>
+              <th>Made</th>
+              <th>By</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((link) => (
+              <tr key={link.id}>
+                <td>{link.label || <span className="muted">no label</span>}</td>
+                <td>{formatDateTime(link.created_at)}</td>
+                <td>{link.member ? "a signed-in member" : "a guest"}</td>
+                <td className="num">
+                  <button
+                    className="btn danger small"
+                    disabled={revoke.isPending}
+                    onClick={() => {
+                      if (window.confirm("Revoke this link? Whoever has it will no longer be able to open the run."))
+                        revoke.mutate(link.id);
+                    }}
+                  >
+                    Revoke
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <ErrorNotice error={revoke.error} />
+    </section>
+  );
+}
+
 export function RunPage({ shared = false, mine = false }: { shared?: boolean; mine?: boolean }) {
   // A member looking at their own run sees what a guest sees through a link.
   const limited = shared || mine;
@@ -497,6 +554,8 @@ export function RunPage({ shared = false, mine = false }: { shared?: boolean; mi
       )}
 
       <Checks checks={data.checks} />
+
+      {!limited && <PrivateLinks runId={data.id} />}
 
       {data.analysis_notes.length > 0 && (
         <div className="card">

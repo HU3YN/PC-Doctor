@@ -264,6 +264,22 @@ export interface InboxPhoto {
   cases: SimilarCase[];
 }
 
+/** A private link to one run. Only its label and dates: never the key. */
+export interface ShareLink {
+  id: number;
+  label: string;
+  created_at: string;
+  member: boolean;
+}
+
+/** A phone link that still works. Never the token. */
+export interface PhotoLinkRow {
+  id: number;
+  label: string;
+  created_at: string;
+  expires_at: string;
+}
+
 export interface Draft {
   title: string;
   category: string;
@@ -405,6 +421,9 @@ export const api = {
     request<RunDetail>(`/api/runs/${id}`, json("PATCH", patch)),
   reanalyzeRun: (id: string) => request<RunDetail>(`/api/runs/${id}/reanalyze`, { method: "POST" }),
   deleteRun: (id: string) => request<void>(`/api/runs/${id}`, { method: "DELETE" }),
+  runLinks: (id: string) => request<ShareLink[]>(`/api/runs/${id}/links`),
+  revokeRunLink: (id: string, linkId: number) =>
+    request<void>(`/api/runs/${id}/links/${linkId}`, { method: "DELETE" }),
 
   workLog: (filters: { q?: string; category?: string; status?: string }) =>
     request<{ items: WorkLogEntry[]; total: number }>(`/api/worklog${query({ ...filters, limit: 500 })}`),
@@ -456,6 +475,8 @@ export const api = {
       "/api/photo-links",
       json("POST", { label }),
     ),
+  photoLinks: () => request<PhotoLinkRow[]>("/api/photo-links"),
+  revokePhotoLink: (id: number) => request<void>(`/api/photo-links/${id}`, { method: "DELETE" }),
   photoLink: (token: string) =>
     request<{ label: string; expires_at: string }>(`/api/photo-links/${encodeURIComponent(token)}`),
   sendPhoto: (token: string, file: File) => {

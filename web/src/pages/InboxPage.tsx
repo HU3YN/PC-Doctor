@@ -14,7 +14,11 @@ function QrPanel() {
   const [label, setLabel] = useState("");
   const [image, setImage] = useState("");
   const [address, setAddress] = useState("");
-  const create = useMutation({ mutationFn: () => api.createPhotoLink(label) });
+  const client = useQueryClient();
+  const create = useMutation({
+    mutationFn: () => api.createPhotoLink(label),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["photo-links"] }),
+  });
   const local = ["localhost", "127.0.0.1"].includes(window.location.hostname);
   // On the master itself the page is "localhost", which a phone cannot open:
   // use the computer's network address in the code instead.
@@ -77,6 +81,62 @@ function QrPanel() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** The phone links that still work, each with a way to revoke it early. */
+function OpenLinks() {
+  const client = useQueryClient();
+  const links = useQuery({ queryKey: ["photo-links"], queryFn: api.photoLinks });
+  const revoke = useMutation({
+    mutationFn: (id: number) => api.revokePhotoLink(id),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["photo-links"] }),
+  });
+  if (links.error) return <ErrorNotice error={links.error} />;
+  const items = links.data ?? [];
+  if (items.length === 0) return null;
+  return (
+    <div className="card stack" style={{ gap: 10 }}>
+      <h2>Open phone links</h2>
+      <p className="muted small">
+        Each QR code works until it expires. Revoke one early if it was shared by mistake; photos already sent
+        stay in the inbox.
+      </p>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th>Made</th>
+              <th>Expires</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((link) => (
+              <tr key={link.id}>
+                <td>{link.label || <span className="muted">no label</span>}</td>
+                <td>{formatDateTime(link.created_at)}</td>
+                <td>{formatDateTime(link.expires_at)}</td>
+                <td className="num">
+                  <button
+                    className="btn danger small"
+                    disabled={revoke.isPending}
+                    onClick={() => {
+                      if (window.confirm("Revoke this link? The phone will no longer be able to send photos with it."))
+                        revoke.mutate(link.id);
+                    }}
+                  >
+                    Revoke
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <ErrorNotice error={revoke.error} />
     </div>
   );
 }
@@ -200,6 +260,7 @@ export function InboxPage() {
         </Link>
       </div>
       <QrPanel />
+      <OpenLinks />
       <ErrorNotice error={inbox.error} />
       {inbox.isLoading && <Loading what="Loading photos" />}
       {inbox.isSuccess && items.length === 0 && (

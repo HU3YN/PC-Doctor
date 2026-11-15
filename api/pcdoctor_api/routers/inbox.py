@@ -110,6 +110,35 @@ def create_link(body: NewLink, db: Db, _: Master) -> dict[str, Any]:
     }
 
 
+@router.get("/photo-links")
+def list_links(db: Db, _: Master) -> list[dict[str, Any]]:
+    """The photo links that still work, newest first. Never the token."""
+    links = db.scalars(
+        select(PhotoLink)
+        .where(PhotoLink.expires_at >= utcnow())
+        .order_by(PhotoLink.created_at.desc(), PhotoLink.id.desc())
+    )
+    return [
+        {
+            "id": link.id,
+            "label": link.label,
+            "created_at": link.created_at,
+            "expires_at": link.expires_at,
+        }
+        for link in links
+    ]
+
+
+@router.delete("/photo-links/{link_id}", status_code=204)
+def revoke_link(link_id: int, db: Db, _: Master) -> None:
+    """Revoke one photo link before it expires. Photos already sent stay."""
+    link = db.get(PhotoLink, link_id)
+    if link is None:
+        raise HTTPException(status_code=404, detail="Link not found.")
+    db.delete(link)
+    db.commit()
+
+
 @router.get("/photo-links/{token}")
 def check_link(token: str, db: Db) -> dict[str, Any]:
     """What the phone's page needs: is the link still good, and what is it for."""
