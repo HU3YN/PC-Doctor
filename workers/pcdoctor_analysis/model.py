@@ -84,6 +84,9 @@ class Thresholds:
     min_frames_for_stats: int = 300
     # --- bottleneck
     gpu_limited_load_pct: float = 95.0
+    # Below this median GPU load, with no frame times, nothing was being played:
+    # the capture caught an idle PC and the performance checks say nothing.
+    idle_gpu_load_pct: float = 15.0
     cpu_limited_gpu_load_below_pct: float = 85.0
     cpu_limited_core_load_pct: float = 85.0
     # --- temperatures (deg C)

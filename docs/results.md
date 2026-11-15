@@ -70,7 +70,7 @@ project's code, not real-world accuracy.
 | Fuzzing: inputs run, crashes found and fixed | About 161,000 Python inputs in two long runs (80,485 and 80,704, 5,000 per property); 10 crash bugs found and fixed, each with a regression test; the second run, after the fixes, found none. Go `FuzzCleanRun`: 1,115,863 executions in 61 s, none found | Cloud build container (4 CPUs), Hypothesis 6.170.15, Go 1.24, 2026-11-14. Details: [fuzz/README.md](../fuzz/README.md) |
 | Upload service memory for a zip bomb | Checking a 298 KB zip that unpacks to 300 MB allocated 775 MB before the fix and 1 MB after | `TestZipBombIsNotHeldInMemoryUnpacked`, cloud build container, 2026-11-14 |
 | Photo reading time on a busy machine | About 40 s per photo before running Tesseract single-threaded, about 0.2 s after (one 1280x720 test image, 3 tries each) | Cloud build container, 4 CPUs at load ~13 from other jobs, 2026-11-14. Not a benchmark: it shows the thread setting mattered |
-| Fault types detected | 29 | rules version 2026.11.1 |
+| Fault types detected | 29 | rules version 2026.11.2 |
 
 ## Plumbing checks - not results
 

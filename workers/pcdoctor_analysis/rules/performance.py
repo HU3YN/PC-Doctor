@@ -75,6 +75,17 @@ def stutter(run: RunData, t: Thresholds) -> list[Finding] | None:
     ]
 
 
+def idle_capture(run: RunData, t: Thresholds) -> float | None:
+    """The median GPU load when a capture caught an idle PC (no frame times and
+    the graphics card barely used), else None. The owner's first real capture
+    was like this: 3% GPU load for five minutes, and both "limited" checks
+    claimed to have passed."""
+    if run.frames is not None or not (run.sensors and run.sensors.has("gpu_load_pct", 10)):
+        return None
+    load = median(run.sensors.values("gpu_load_pct"))
+    return load if load < t.idle_gpu_load_pct else None
+
+
 def _gpu_load(run: RunData) -> float | None:
     """Typical GPU load during the run (median), from sensors or PresentMon."""
     if run.sensors and run.sensors.has("gpu_load_pct", 10):
@@ -93,6 +104,8 @@ def _gpu_load(run: RunData) -> float | None:
     "GPU load from sensors, or GPU busy time from PresentMon",
 )
 def gpu_limited(run: RunData, t: Thresholds) -> list[Finding] | None:
+    if idle_capture(run, t) is not None:
+        return None  # nothing was being played: no verdict either way
     load = _gpu_load(run)
     if load is None:
         return None
@@ -130,6 +143,8 @@ def cpu_limited(run: RunData, t: Thresholds) -> list[Finding] | None:
     sensors = run.sensors
     if sensors is None or not sensors.has("gpu_load_pct", 10):
         return None
+    if idle_capture(run, t) is not None:
+        return None  # nothing was being played: no verdict either way
     has_core = sensors.has("cpu_core_max_load_pct", 10)
     if not has_core and not sensors.has("cpu_load_pct", 10):
         return None

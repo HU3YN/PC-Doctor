@@ -109,6 +109,16 @@ def analyze_run(run: RunData, thresholds: Thresholds | None = None) -> AnalysisR
             notes.append(
                 f"Only {stats.frames} frames were captured, too few to judge stutter reliably."
             )
+    from .rules.performance import idle_capture
+
+    idle = idle_capture(run, thresholds)
+    if idle is not None:
+        notes.append(
+            f"The PC was mostly idle during the capture (median GPU load {idle:.0f}%, no frame "
+            "times), so this capture cannot show how it performs or how hot it runs under load. "
+            "Start the game first and play during the whole capture - the collector's "
+            "start delay gives time to switch to it."
+        )
     sensor_stats: dict[str, dict[str, Any]] = {}
     if run.sensors is not None:
         sensor_stats = summarize(run.sensors)

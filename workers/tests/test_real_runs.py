@@ -103,3 +103,41 @@ def test_the_disk_number_names_the_drive(tmp_path):
     # A run from before disk numbers were recorded (like the owner's first one).
     old = run_with(tmp_path / "c", [DISK_RETRY])["storage.io_errors"]
     assert "does not record disk numbers" in old.summary
+
+
+def idle_capture_run(tmp_path, gpu_load: str):
+    """The healthy sample capture without frame times and with the given GPU
+    load - like the owner's first capture, made with nothing running."""
+    from pcdoctor_analysis import synth
+
+    synth.build("healthy").write(tmp_path)
+    folder = tmp_path if (tmp_path / "manifest.json").exists() else next(tmp_path.iterdir())
+    (folder / "presentmon.csv").unlink()
+    lines = (folder / "sensors.csv").read_text(encoding="utf-8").splitlines()
+    column = lines[0].split(",").index("gpu_load_pct")
+    rows = [lines[0]]
+    for line in lines[1:]:
+        cells = line.split(",")
+        cells[column] = gpu_load
+        rows.append(",".join(cells))
+    (folder / "sensors.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return folder
+
+
+def test_an_idle_capture_judges_no_performance_and_says_why(tmp_path):
+    from pcdoctor_analysis import analyze_run_dir
+
+    result = analyze_run_dir(idle_capture_run(tmp_path, "3"))
+    status = {c.code: c.status for c in result.checks}
+    assert status["performance.gpu_limited"] == "no_data"
+    assert status["performance.cpu_limited"] == "no_data"
+    assert any("mostly idle during the capture" in note for note in result.notes)
+
+
+def test_a_busy_card_without_frame_times_is_still_judged(tmp_path):
+    from pcdoctor_analysis import analyze_run_dir
+
+    result = analyze_run_dir(idle_capture_run(tmp_path, "98"))
+    status = {c.code: c.status for c in result.checks}
+    assert status["performance.gpu_limited"] == "found"
+    assert not any("idle" in note for note in result.notes)
