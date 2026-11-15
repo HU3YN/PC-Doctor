@@ -10,8 +10,8 @@ import uvicorn
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the PC Doctor API (and dashboard, if built).")
-    # 127.0.0.1 = this computer only. There are no logins yet, so only use
-    # 0.0.0.0 on a network you trust (see README, "Using it from another PC").
+    # 127.0.0.1 = this computer only. Stored data needs a sign-in, but this
+    # serves plain HTTP: use 0.0.0.0 only on a network you trust.
     parser.add_argument("--host", default=os.environ.get("PCDOCTOR_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("PCDOCTOR_PORT", "8000")))
     parser.add_argument("--reload", action="store_true", help="restart when the code changes")

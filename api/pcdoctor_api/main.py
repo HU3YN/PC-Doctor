@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from . import __version__, metrics
+from . import __version__, logs, metrics
 from .config import Settings, get_settings
 from .db import get_db, migrate
 from .routers import assist, auth, inbox, intake, live, oauth, reference, runs, worklog
@@ -110,6 +110,7 @@ def mount_dashboard(app: FastAPI, dist: Path) -> None:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    logs.install()  # private links and tokens never reach the access log
     app = FastAPI(
         title="PC Doctor",
         version=__version__,
