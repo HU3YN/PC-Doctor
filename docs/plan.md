@@ -54,10 +54,10 @@ numbers.
 
 ### Known gaps
 
-- Nothing has met the owner's hardware yet. The owner's PC (HueyPC) is in
-  the Remote Control list, but it does not offer its folders to cloud
-  sessions (likely the Claude app there needs updating), so the capture has
-  to come from the owner: run the collector, attach the zip.
+- The owner's PC has run the collector once, in quick mode (see
+  results.md, "First run on real hardware"). A 5-minute capture with
+  PresentMon and LibreHardwareMonitor is still missing. The owner's PC is not
+  offered to cloud sessions, so runs come as zips attached to the chat.
 - The repository's default branch is still `claude/festive-cray-nw5hzp`:
   until this branch is merged there, the weekly security run, Dependabot and
   the manual release run are not active.

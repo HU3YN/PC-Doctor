@@ -39,6 +39,27 @@ on a real AWS account, k6 numbers on a real machine, the sensor node on
 hardware. [testing.md](testing.md) lists what only the owner's PC, phone or
 accounts can prove.
 
+## First run on real hardware (2026-11-15)
+
+The owner's own PC: AMD Ryzen 7 9800X3D, NVIDIA GeForce RTX 5080, 32 GB
+DDR5 (2 x 16 GB at 6000 MT/s), three NVMe SSDs, Windows 11 Pro 26200,
+PowerShell collector in **quick** mode (no frame times, no sensors).
+
+| Check | Result |
+|---|---|
+| Collector on a real PC | Ran as administrator in 4 s; wrote specs, events and disks; no warnings |
+| Privacy | No computer name, user name, serial number or file name in any file (read in full, and searched for the owner's names) |
+| Analyzer | Read every file with no notes; 16 checks passed, 11 had no data (quick mode) |
+| What it reported | A disk I/O retry ("Disk 3", 25 October) and, minutes later in the log, a 0x9F DRIVER_POWER_STATE_FAILURE blue screen; the matching Kernel-Power 41 was rightly not counted as a power loss |
+| Not yet known | Whether those findings are right: the owner has not confirmed what happened that day. Not an accuracy result |
+
+Real hardware showed things the synthetic runs never did: both RAM modules
+report the slot "DIMM 1" (the bank label tells channels apart), disk errors
+name a Windows disk number the collector did not record, the stop-code text
+had a double full stop, and the display reports 59 Hz (Windows' usual name
+for a 60 Hz mode). Still missing: a 5-minute capture with PresentMon and
+LibreHardwareMonitor.
+
 ## Measured so far
 
 Each of these was measured once, in the place named. They describe this
