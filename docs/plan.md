@@ -4,7 +4,7 @@ This file is the handoff between work sessions. To continue, start a session
 on this repository and say: "Read docs/plan.md and carry out 'Plan for the next
 session', starting at Step 0."
 
-## Where things stand (2026-11-15, branch `claude/dreamy-bohr-fser6e`)
+## Where things stand (2026-11-15, merged into the default branch `claude/festive-cray-nw5hzp`)
 
 Every phase of [the roadmap](roadmap.md) now has code that passes its tests
 in CI. Almost none of it has met real hardware, real photos, real accounts or
@@ -78,9 +78,6 @@ a note saying the PC was idle (rules 2026.11.2). Recorded in results.md.
   offered to cloud sessions, so runs come as zips attached to the chat.
 - The first real run's findings (disk retry on "Disk 3", 0x9F blue screen,
   25 October) are not confirmed by the owner.
-- The repository's default branch is still `claude/festive-cray-nw5hzp`:
-  until this branch is merged, the weekly security run, Dependabot and the
-  manual release run are not active.
 - The release workflow has never run (needs a `collector-v*` tag).
 - The API image fetches the build backend for this repository's own two
   packages without a hash; nginx's error log can still show a full request
@@ -95,40 +92,95 @@ Commit and push after each step; after each push read the CI result (both
 again cancels a running CI run. Never write a number into `docs/results.md`
 or a README unless it was measured, and say where. A local Windows-target
 check of `collector-rs` without TLS rewrites `Cargo.lock`: restore it before
-committing.
+committing. Never squash or rebase merged history: `.gitleaksignore` allows
+three findings by commit SHA.
 
-### Step 0 - Confirm the starting point
+### Step 0 - Confirm the starting point, and ask the owner
 
-`git pull`; check that the latest `ci` and `security` runs passed.
+1. `git pull`; check that the latest `ci` and `security` runs passed. The
+   merge on 2026-11-15 turned on the weekly security run and Dependabot:
+   expect a first batch of Dependabot pull requests; review them, do not
+   merge them blindly.
+2. **Ask the owner what else they want changed.** On 2026-11-15 they said
+   they want to "change some things around" without saying what. Write the
+   answers into this file before starting Step 1.
 
-### Step 1 - The owner's hardware (needs the owner)
+### Step 1 - Convenience first: one download, frames and temperatures included
 
-1. Ask the owner the three questions about the first run: is the monitor
-   really 60 Hz (Windows reports 59 Hz)? Was a USB drive or card reader
-   attached on 25 October? Did the blue screen happen around sleep or
-   shutdown? With answers and the owner's yes, make it the first real case
-   in `eval/cases/` (the raw zip is not committed without that yes).
-2. Before the next run, the owner needs: the current branch
-   (`git pull` on `claude/dreamy-bohr-fser6e` - the last capture came from
-   an older copy), `collector\Get-Tools.ps1` run once, LibreHardwareMonitor
-   running with its web server on, a game started first, and the capture's
-   start delay used to switch to it.
-3. When the owner attaches that run: first look at the
-   new `memory.modules[].bank` values. If they tell the two channels apart
-   (e.g. "P0 CHANNEL A" / "P0 CHANNEL B"), extend `memory.single_channel` to
-   flag two or more sticks on one channel (wrong slots). Do not write that
-   rule before seeing real labels. Also check `physical_disks[].number`.
-4. Analyze the capture with `pcdoctor-analyze`, compare with the real PC, fix
-   what real hardware shows, record measurements in results.md.
+**The owner's requirement (2026-11-15):** the person checking a PC must not
+have to download, install or start any other program to get frame times and
+temperatures. One download, double-click, and the capture has everything.
+Today it needs `Get-Tools.ps1` (PresentMon) and a separately started
+LibreHardwareMonitor with its web server on - the owner's own capture missed
+both. The two halves are not equally easy:
 
-### Step 2 - With the owner's yes
+**Frames (PresentMon) - straightforward.**
+1. Bundle the pinned PresentMon in the collector zip and in the release. This
+   reverses the 2026-11-15 decision to make it a separate download. Its
+   licence allows it: PresentMon's LICENSE.txt is a permissive MIT-style
+   licence (Copyright Intel) - ship that file with it.
+2. The release workflow fetches PresentMon and checks the pinned SHA-256, so
+   the zip stays reproducible and attestable; `collector_build.py` and
+   `/api/collector.zip` include it the same way. Keep the Intel signature
+   check at run time (`Find-PCDoctorPresentMon`).
+3. The collector picks the game itself (the busiest presenting program) and
+   checks **at the start** that something is under load - warn and wait,
+   instead of reporting an idle PC after 5 minutes.
 
-1. Merge this branch into the default branch (a pull request), so the
-   weekly security run and Dependabot start.
-2. Push `collector-v1.0.0` and check the release with `gh attestation verify`.
-3. Turn on private vulnerability reporting (Settings > Code security).
+**Temperatures - one decision for the owner first.**
+- GPU temperature already works with nothing extra on NVIDIA (signed
+  nvidia-smi; proven on the owner's capture). AMD and Intel GPUs: check what
+  Windows or the vendor driver exposes without a kernel driver.
+- **CPU temperature needs ring-0 access**, which Windows does not offer to a
+  plain program. The project rule says the collector "never installs
+  drivers", and Get-Tools.ps1 leaves LibreHardwareMonitor out for exactly
+  that reason. Present these options and get the owner's decision before
+  writing code - do not quietly change the rule:
+  1. **Recommended:** bundle LibreHardwareMonitorLib (MPL-2.0 - redistribution
+     is allowed; ship its licence and say where its source is) and load it
+     from the collector only during a capture, as administrator, after a
+     clear prompt ("PC Doctor will load a temporary hardware-monitoring
+     driver to read temperatures; it is removed when the capture ends").
+     Amend the read-only rule to allow exactly that, nothing else.
+  2. Keep the rule: no CPU temperature without the user starting a tool
+     (today's behaviour, with better prompts).
+  3. Use only what Windows offers without a driver (ACPI thermal zones):
+     usually not the CPU's real temperature - say so if used.
+- **Research before building option 1** (do not rely on memory): which
+  driver current LibreHardwareMonitor releases load, whether it is signed,
+  whether Microsoft Defender or the vulnerable-driver blocklist flags it,
+  how it is unloaded, and test it on the owner's PC first (an attached run).
+- When it is built, update together: README, collector/README.md,
+  docs/privacy.md, docs/rules.md (the rule), threat-model items #1 and #2,
+  docs/testing.md, the Get page text, the release workflow and the Windows
+  CI job.
 
-### Step 3 - Small follow-ups
+### Step 2 - The owner's hardware (needs the owner)
+
+1. Ask the three questions about the first run: is the monitor really
+   60 Hz (Windows reports 59 Hz)? Was a USB drive or card reader attached on
+   25 October? Did the blue screen happen around sleep or shutdown? With
+   answers and the owner's yes, make it the first real case in `eval/cases/`
+   (the raw zip is not committed without that yes; it is in the owner's
+   `collector\runs` folder).
+2. Next capture: with the current default branch, a game running, and
+   (after Step 1) nothing else to start.
+3. First look at the new `memory.modules[].bank` values: if they tell the
+   two channels apart (e.g. "P0 CHANNEL A" / "P0 CHANNEL B"), extend
+   `memory.single_channel` to flag sticks on one channel (wrong slots). Do
+   not write that rule before seeing real labels. Check
+   `physical_disks[].number` too.
+4. Analyze with `pcdoctor-analyze`, compare with the real PC, fix what real
+   hardware shows, record measurements in results.md.
+
+### Step 3 - With the owner's yes
+
+1. Push `collector-v1.0.0` (after Step 1, so the release includes
+   PresentMon) and check it with `gh attestation verify`.
+2. The owner turns on private vulnerability reporting (Settings > Code
+   security).
+
+### Step 4 - Small follow-ups
 
 1. After real cases exist: retrain `ml/frames` and compare with the rule.
 
