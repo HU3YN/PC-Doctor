@@ -242,9 +242,10 @@ def test_only_jpeg_png_and_webp_are_decoded():
             photo.open_photo(encoded(kind))
 
 
-def test_an_image_over_the_pixel_limit_is_refused_not_just_warned_about(monkeypatch):
+def test_an_image_over_the_pixel_limit_is_refused_and_nothing_global_changes(monkeypatch):
     from PIL import Image
 
+    before = Image.MAX_IMAGE_PIXELS
     buffer = io.BytesIO()
     Image.new("L", (120, 100), 0).save(buffer, "PNG")  # 12,000 pixels
     # Between the limit and twice the limit, Pillow itself only warns.
@@ -254,3 +255,5 @@ def test_an_image_over_the_pixel_limit_is_refused_not_just_warned_about(monkeypa
     monkeypatch.setattr(photo, "MAX_PIXELS", 5_000)
     with pytest.raises(photo.PhotoError):
         photo.open_photo(buffer.getvalue())
+    # Pillow's own process-wide limit is left as it was.
+    assert before == Image.MAX_IMAGE_PIXELS

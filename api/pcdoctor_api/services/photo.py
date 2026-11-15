@@ -73,12 +73,17 @@ def open_photo(data: bytes):
 
     from PIL import Image, UnidentifiedImageError
 
-    Image.MAX_IMAGE_PIXELS = MAX_PIXELS
     try:
         with warnings.catch_warnings():
-            # Pillow only warns between MAX_PIXELS and twice that; make it an error.
+            # Pillow's own bomb check (its default limit) stays on, as an error.
             warnings.simplefilter("error", Image.DecompressionBombWarning)
             image = Image.open(io.BytesIO(data), formats=ALLOWED_FORMATS)
+            # Our own, lower limit, checked from the header before any pixel
+            # is decoded. (Not by changing Image.MAX_IMAGE_PIXELS: that is one
+            # setting for the whole process.)
+            width, height = image.size
+            if width * height > MAX_PIXELS:
+                raise PhotoError("That photo is too large. Use one under 40 megapixels.")
             image.load()
     except (
         UnidentifiedImageError,
