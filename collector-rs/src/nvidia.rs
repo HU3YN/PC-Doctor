@@ -72,10 +72,11 @@ const CHECK_SCRIPT: &str = "$s = Get-AuthenticodeSignature -LiteralPath $env:PCD
      $subject = ''; if ($s.SignerCertificate) { $subject = $s.SignerCertificate.Subject }; \
      Write-Output ('{0}|{1}' -f $s.Status, $subject)";
 
-/// Ask Windows PowerShell whether `file` has a valid signature from `publisher`.
-pub fn signed_by(file: &Path, publisher: &str) -> bool {
+/// Windows PowerShell's answer about `file`: "Valid|<subject>", or the
+/// reason it could not answer.
+pub fn signature_answer(file: &Path) -> String {
     let Some(root) = std::env::var_os("SystemRoot") else {
-        return false;
+        return "no SystemRoot".into();
     };
     let powershell = PathBuf::from(root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
     let output = Command::new(powershell)
@@ -83,11 +84,15 @@ pub fn signed_by(file: &Path, publisher: &str) -> bool {
         .env("PCDOCTOR_CHECK_FILE", file)
         .output();
     match output {
-        Ok(output) if output.status.success() => {
-            signature_ok(&String::from_utf8_lossy(&output.stdout), publisher)
-        }
-        _ => false,
+        Ok(output) if !output.stdout.is_empty() => String::from_utf8_lossy(&output.stdout).into(),
+        Ok(output) => format!("no answer: {}", String::from_utf8_lossy(&output.stderr)),
+        Err(error) => format!("could not start PowerShell: {error}"),
     }
+}
+
+/// Ask Windows PowerShell whether `file` has a valid signature from `publisher`.
+pub fn signed_by(file: &Path, publisher: &str) -> bool {
+    signature_ok(&signature_answer(file), publisher)
 }
 
 /// System32\nvidia-smi.exe, if it is there and signed by NVIDIA.
@@ -169,7 +174,11 @@ mod tests {
     fn windows_checks_real_signatures() {
         let notepad =
             PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join(r"System32\notepad.exe");
-        assert!(signed_by(&notepad, "Microsoft Corporation"));
+        let answer = signature_answer(&notepad);
+        assert!(
+            signed_by(&notepad, "Microsoft Corporation"),
+            "PowerShell said: {answer:?}"
+        );
         assert!(!signed_by(&notepad, "NVIDIA Corporation"));
         let folder = tempfile::tempdir().unwrap();
         let unsigned = folder.path().join("nvidia-smi.exe");
