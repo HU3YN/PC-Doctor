@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from ..loader import RunData
@@ -21,6 +22,12 @@ KERNEL_POWER = "Microsoft-Windows-Kernel-Power"
 WER = "Microsoft-Windows-WER-SystemErrorReporting"
 MEMDIAG = "Microsoft-Windows-MemoryDiagnostics-Results"
 PROCESSOR_POWER = "Microsoft-Windows-Kernel-Processor-Power"
+
+
+def _clause(text: str) -> str:
+    """A sentence from the stop-code guide, without its closing full stop, to
+    sit inside a longer sentence."""
+    return text.strip().rstrip(".").rstrip()
 
 
 def _times(events: list[dict[str, Any]]) -> tuple[str, str]:
@@ -390,7 +397,9 @@ def bluescreen(run: RunData, t: Thresholds) -> list[Finding] | None:
         times = f"{count}x " if count > 1 else ""
         if entry:
             hardware = hardware or entry.hardware_likely
-            meaning = f" - {entry.meaning}" if entry.meaning else ""
+            # The guide's meanings are whole sentences; inside a list the
+            # full stop goes (the summary ends with one of its own).
+            meaning = f" - {_clause(entry.meaning)}" if entry.meaning else ""
             lines.append(f"{times}{entry.hex} {entry.name}{meaning}")
         else:
             lines.append(f"{times}{format_code(code)} (not in the built-in list)")
@@ -420,7 +429,17 @@ def bluescreen(run: RunData, t: Thresholds) -> list[Finding] | None:
     severe = total >= t.bluescreens_crit or hardware
     summary = f"Windows blue-screened {total} time(s) in {_window(run)}: " + "; ".join(lines) + "."
     if top and top.causes:
-        summary += " Usual causes, most likely first: " + "; ".join(top.causes) + "."
+        causes = "; ".join(_clause(cause) for cause in top.causes)
+        summary += f" Usual causes, most likely first: {causes}."
+    disk_events = [
+        e
+        for e in run.events
+        if _STORAGE_EVENTS.get(str(e.get("provider", "")).lower(), {}).get(e.get("id"))  # type: ignore[arg-type]
+    ]
+    gap = _near_a_crash(disk_events, _crash_records(run))
+    if gap is not None:
+        summary += _INCIDENT_NOTE.format(gap=gap)
+        checks.insert(0, "Check the disk error found in the same run first (see that finding).")
     return [
         Finding(
             code="stability.bluescreen",
@@ -437,6 +456,7 @@ def bluescreen(run: RunData, t: Thresholds) -> list[Finding] | None:
                 "count": total,
                 "codes": {format_code(c): n for c, n in codes.most_common()},
                 "suspected_drivers": dict(drivers),
+                "minutes_after_a_disk_error": gap,
                 "first": first,
                 "last": last,
             },
@@ -486,6 +506,79 @@ def gpu_driver_timeout(run: RunData, t: Thresholds) -> list[Finding] | None:
             error_codes=["Display-4101"],
         )
     ]
+
+
+_DISK_NUMBER = re.compile(r"\bDisk (\d+)\b")
+INCIDENT_MINUTES = 30
+
+
+def _when(event: dict[str, Any]) -> datetime | None:
+    try:
+        stamp = datetime.fromisoformat(str(event.get("time", "")).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC)
+
+
+def _crash_records(run: RunData) -> list[dict[str, Any]]:
+    """The events Windows writes about a blue screen. They are written when
+    Windows starts again, so their time is the restart, not the crash."""
+    records = [e for e in run.events_from(WER, (1001,)) if _bugcheck_code(e)]
+    records += [
+        e for e in run.events_from(KERNEL_POWER, (41,)) if _int(_data(e).get("BugcheckCode"))
+    ]
+    return records
+
+
+def _near_a_crash(disk_events: list[dict[str, Any]], crashes: list[dict[str, Any]]) -> int | None:
+    """Minutes from a disk error to the next blue-screen record, if within
+    INCIDENT_MINUTES (the record comes after the crash, so only later ones)."""
+    gaps = []
+    for disk_event in disk_events:
+        start = _when(disk_event)
+        for crash in crashes:
+            end = _when(crash)
+            if start and end and timedelta(0) <= end - start <= timedelta(minutes=INCIDENT_MINUTES):
+                gaps.append(int((end - start).total_seconds() // 60))
+    return min(gaps) if gaps else None
+
+
+_INCIDENT_NOTE = (
+    " A disk error and a blue screen were logged {gap} minute(s) apart, so they are possibly "
+    "one incident - a drive that stops answering can leave a driver stuck. (The blue-screen "
+    "record is written when Windows restarts, so the crash itself was a little earlier.)"
+)
+
+
+def _which_disks(run: RunData, events: list[dict[str, Any]]) -> tuple[str, list[int]]:
+    """Name the drive(s) Windows calls "Disk N" in the event messages, from the
+    disk numbers the collector records (older runs have none)."""
+    numbers = sorted(
+        {int(n) for e in events for n in _DISK_NUMBER.findall(str(e.get("message", "")))}
+    )
+    if not numbers:
+        return "", []
+    disks = run.disks.get("physical_disks", []) if run.disks else []
+    known = {
+        d.get("number"): d.get("name") or "a drive"
+        for d in disks
+        if isinstance(d.get("number"), int)
+    }
+    parts = []
+    for number in numbers:
+        if not known:
+            parts.append(
+                f"Windows calls the drive Disk {number}; this run does not record disk numbers, "
+                "so it cannot say which drive that is"
+            )
+        elif number in known:
+            parts.append(f"Disk {number} is the {known[number]}")
+        else:
+            parts.append(
+                f"Disk {number} is none of the drives listed - often a USB drive or card reader "
+                "that is no longer plugged in"
+            )
+    return " " + ". ".join(parts) + ".", numbers
 
 
 # provider (lower case) -> {event id: (what it means, is it serious)}
@@ -538,6 +631,9 @@ def storage_io_errors(run: RunData, t: Thresholds) -> list[Finding] | None:
         return []
     first, last = _times(matched)
     detail = "; ".join(f"{count}x {meaning}" for meaning, count in counts.most_common())
+    which, numbers = _which_disks(run, matched)
+    gap = _near_a_crash(matched, _crash_records(run))
+    incident = _INCIDENT_NOTE.format(gap=gap) if gap is not None else ""
     return [
         Finding(
             code="storage.io_errors",
@@ -554,6 +650,8 @@ def storage_io_errors(run: RunData, t: Thresholds) -> list[Finding] | None:
                     "failing drive, a bad cable or port, or a power problem. They also cause "
                     "long freezes in games."
                 )
+                + which
+                + incident
             ),
             next_checks=[
                 "Back up anything important before testing further.",
@@ -562,7 +660,14 @@ def storage_io_errors(run: RunData, t: Thresholds) -> list[Finding] | None:
                 "Update the SSD firmware and the storage controller driver.",
                 "Run 'chkdsk /scan' on the affected volume.",
             ],
-            evidence={"count": len(matched), "by_kind": dict(counts), "first": first, "last": last},
+            evidence={
+                "count": len(matched),
+                "by_kind": dict(counts),
+                "first": first,
+                "last": last,
+                "disk_numbers": numbers,
+                "minutes_before_a_blue_screen": gap,
+            },
             error_codes=codes,
         )
     ]
