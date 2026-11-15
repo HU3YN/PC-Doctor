@@ -4,7 +4,7 @@ This file is the handoff between work sessions. To continue, start a session
 on this repository and say: "Read docs/plan.md and carry out 'Plan for the next
 session', starting at Step 0."
 
-## Where things stand (2026-11-14, evening, branch `claude/dreamy-bohr-fser6e`)
+## Where things stand (2026-11-15, branch `claude/dreamy-bohr-fser6e`)
 
 Every phase of [the roadmap](roadmap.md) now has code that passes its tests
 in CI. Almost none of it has met real hardware, real photos, real accounts or
@@ -41,15 +41,28 @@ numbers.
 | #1 | Reproducible collector zip, a release workflow that attests and publishes it, the hash on the Get page; PresentMon a separate download |
 | Step 2 | Live batch limit shared through Redis; members see a run they uploaded even if someone uploaded the file first; the Rust collector falls back to Windows' counters |
 
+### Done on 2026-11-15 (the plan's Step 2 and 3)
+
+| Item | What was done |
+|---|---|
+| #11 | "Sign out everywhere" and a master password change (Account page, checked in a browser) |
+| #19 | Keys and tokens replaced with placeholders in the API's and nginx's access logs (checked with a running server and nginx 1.24) |
+| #10 | k3s NetworkPolicies: only the app's pods reach PostgreSQL and Redis; a CI job schema-checks every manifest |
+| #3 | [lan-https.md](lan-https.md): HTTPS with a local certificate authority on a shared network (not tried end to end) |
+| #15 | The API image installs from a hashed lock file (`api/lock.py`); every image pinned by digest |
+| nvidia-smi | The Rust collector reads an NVIDIA card through System32's nvidia-smi when it is signed by NVIDIA. CI on real Windows found the check failing when started from PowerShell 7 (inherited `PSModulePath`); fixed and tested against catalog-signed notepad.exe |
+
 ### Known gaps
 
-- The release workflow has never run: it runs on a `collector-v*` tag.
-- The Rust collector's Windows-counter fallback was compiled for Windows and
-  tested in CI, never run on a real PC; it has no `nvidia-smi` (that needs a
-  publisher signature check in Rust).
-- Still open in the threat model: plain HTTP in LAN mode (#3), no session
-  revocation or password change (#11), unpinned Python dependencies (#15),
-  keys in access logs (#19), no NetworkPolicy in k3s (#10, part).
+- Nothing has met the owner's hardware yet. The owner's PC (HueyPC) is in
+  the Remote Control list, but it does not offer its folders to cloud
+  sessions (likely the Claude app there needs updating), so the capture has
+  to come from the owner: run the collector, attach the zip.
+- The repository's default branch is still `claude/festive-cray-nw5hzp`:
+  until this branch is merged there, the weekly security run, Dependabot and
+  the manual release run are not active.
+- The release workflow has never run (needs a `collector-v*` tag).
+- Single links (a share key, a photo link) cannot be revoked on their own.
 - The LED model needs real photos; the frame-time model needs real cases.
 
 ## Plan for the next session (execute in this order)
@@ -57,42 +70,34 @@ numbers.
 Rules for whoever executes this: the project rules at the bottom apply.
 Commit and push after each step; after each push read the CI result (both
 `ci` and `security` workflows) and fix failures before going on. Pushing
-again cancels a running CI run, so wait for one to finish before the next
-push when a step depends on it. Never write a number into `docs/results.md`
-or a README unless it was measured, and say where.
+again cancels a running CI run. Never write a number into `docs/results.md`
+or a README unless it was measured, and say where. A local Windows-target
+check of `collector-rs` without TLS rewrites `Cargo.lock`: restore it before
+committing.
 
 ### Step 0 - Confirm the starting point
 
-`git pull`; check that the latest `ci` and `security` runs passed; run the
-local suites as in [testing.md](testing.md).
+`git pull`; check that the latest `ci` and `security` runs passed.
 
-### Step 1 - With the owner: real hardware first
+### Step 1 - The owner's hardware (needs the owner)
 
-The code is ahead of the evidence. Walk through
-[testing.md](testing.md#what-only-the-owner-can-prove) with the owner, in
-order, starting with a capture on their gaming PC. Fix what real hardware
-shows, and record every measurement in [results.md](results.md) with its
-context. Ask the owner before pushing the first `collector-v1.0.0` tag (it
-publishes a release).
+Either the owner's PC is offered to the session (`list_computer_folders`
+shows it under `folders`), or the owner attaches a capture zip. Then: analyze
+it with `pcdoctor-analyze`, compare with what the PC really is, fix what
+real hardware shows, and record measurements in [results.md](results.md).
+Then walk through the rest of [testing.md](testing.md#what-only-the-owner-can-prove).
 
-### Step 2 - Remaining threat-model items
+### Step 2 - With the owner's yes
 
-1. **#11** a "sign out everywhere" button (delete the account's sessions) and
-   a password change for the master, with tests.
-2. **#15** a lock file for the Python dependencies (`pip-compile` or `uv
-   lock`) used by the Dockerfiles; pin the base images by digest.
-3. **#3** HTTPS on the LAN: document `mkcert` or a reverse proxy with a local
-   certificate, or offer it from `Start-PCDoctor.ps1`.
-4. **#10** a NetworkPolicy in `deploy/k8s` so only the API, worker and
-   upload service reach Redis and PostgreSQL.
-5. **#19** keep share keys and live tokens out of the access logs (log the
-   route template, not the path).
+1. Merge this branch into the default branch (a pull request), so the
+   weekly security run and Dependabot start.
+2. Push `collector-v1.0.0` and check the release with `gh attestation verify`.
+3. Turn on private vulnerability reporting (Settings > Code security).
 
-### Step 3 - Smaller follow-ups
+### Step 3 - Small follow-ups
 
-1. `nvidia-smi` in the Rust collector, after a signature check
-   (`WinVerifyTrust` plus the signer's name).
-2. After real cases exist: retrain `ml/frames`, and compare with the rule.
+1. Revoke a single share key or photo link from the master's views.
+2. After real cases exist: retrain `ml/frames` and compare with the rule.
 
 ## Rules for the project
 

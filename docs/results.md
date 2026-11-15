@@ -15,12 +15,12 @@ build container or in GitHub Actions; none ran on the owner's PC.
 | Check | Result |
 |---|---|
 | Analysis package unit tests | 148 pass (Python 3.11 and 3.13), including 25 regression tests for crashes the fuzzers found |
-| API tests | 228 pass on SQLite and on PostgreSQL 16 (2026-11-14, evening), including access control: every API route is checked to be master-only, signed-in-only or deliberately public |
+| API tests | 245 pass on SQLite and on PostgreSQL 16 (2026-11-15), including access control: every API route is checked to be master-only, signed-in-only or deliberately public |
 | Dashboard unit tests | 6 pass; lint and type check clean |
 | Sign-in pages, member view, Account page, Live page, build comparison | Driven in a real browser (Playwright, desktop and phone sizes) with stand-in Discord/Google ids: no console errors, no sideways scrolling |
 | Go upload service | 10 tests pass with the race detector; fuzzed in CI |
 | Discord bot | 130 tests pass against a stand-in API. **Never run on a real Discord server** |
-| Rust capture collector | 57 tests pass on Linux; builds and tests on windows-latest in CI; the analyzer reads its output with no notes. **Never run with a real game** |
+| Rust capture collector | 60 tests pass on Linux (61 on Windows, including a real signature check); builds and tests on windows-latest in CI; the analyzer reads its output with no notes. **Never run with a real game** |
 | Live view | The Rust collector streamed a fixture capture (900 frames, 10 sensor readings) into a running API in the build container; the Live page showed the same average FPS (138.4) as the analyzer. Not tested over HTTPS |
 | Sensor node | 24 host C tests and 35 receiver tests pass. **The firmware has never been compiled for the ESP32 or run on hardware** |
 | Frame-time model, LED reader | 29 and 23 tests pass on CPU. Trained only on synthetic data (see below) |

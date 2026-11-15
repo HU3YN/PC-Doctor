@@ -39,6 +39,7 @@ cannot.
 | Photo reader scoring | `python eval/photo_eval.py` (needs `eval/photos/labels.csv`); `--synthetic 40` for a plumbing check | `pytest eval/tests -q` |
 | Fuzz tests | Long run: `PCDOCTOR_FUZZ_PROFILE=long pytest -c fuzz/pytest.ini fuzz` (Windows: `$env:PCDOCTOR_FUZZ_PROFILE="long"` first) | Short run: `pytest -c fuzz/pytest.ini fuzz` |
 | Collector release | Push a tag: `git tag collector-v1.0.0 && git push origin collector-v1.0.0` (or "Run workflow" on `release collector` to build and attest without a release) | `gh attestation verify PCDoctor-collector.zip --repo HU3YN/PC-Doctor`; the zip's SHA-256 equals the one on the Get page of a server at the same commit |
+| Python lock file (Docker image) | After changing a dependency in `api/pyproject.toml`: `pip install uv && python api/lock.py`, commit `api/requirements.lock` | `pytest api/tests/test_lock.py -q` |
 | Security checks | - | `pip-audit --skip-editable`, `npm --prefix web audit --omit=dev`, `govulncheck ./...` in `upload-service`, `gitleaks git .` - all run weekly in `.github/workflows/security.yml` |
 
 For the ML folders, use their own environment so the large PyTorch install
