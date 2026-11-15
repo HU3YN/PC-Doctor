@@ -33,6 +33,9 @@ services:
       PCDOCTOR_DATA_DIR: /data
       PCDOCTOR_MAX_UPLOAD_MB: ${PCDOCTOR_MAX_UPLOAD_MB:-200}
       PCDOCTOR_TRUST_PROXY: "true"   # nginx in front sets X-Forwarded-For
+      # How many of our own proxies add an X-Forwarded-For entry: 1 (nginx),
+      # or 2 with HTTPS in front of nginx (docs/lan-https.md).
+      PCDOCTOR_PROXY_HOPS: ${PCDOCTOR_PROXY_HOPS:-1}
       # Optional AI helper. Leave unset to keep it off.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # Optional sign-in with Discord or Google (docs/oauth.md). PUBLIC_URL is

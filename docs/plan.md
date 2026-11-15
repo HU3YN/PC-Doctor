@@ -63,6 +63,9 @@ numbers.
   the manual release run are not active.
 - The release workflow has never run (needs a `collector-v*` tag).
 - Single links (a share key, a photo link) cannot be revoked on their own.
+- The API image fetches the build backend for this repository's own two
+  packages without a hash, and nginx's error log can still show a full
+  request line (with a key) when the API is down.
 - The LED model needs real photos; the frame-time model needs real cases.
 
 ## Plan for the next session (execute in this order)

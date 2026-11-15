@@ -23,14 +23,16 @@ jobs:
     name: python dependencies (pip-audit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
       - name: Install what the API, the analysis and the bot need
         run: pip install -e workers -e "api[ai,photo,queue]" -e bot pip-audit
       # Our own packages are skipped: they are not on PyPI.
       - run: pip-audit --skip-editable
+      - name: The exact versions the Docker image installs (api/requirements.lock)
+        run: pip-audit --require-hashes --disable-pip -r api/requirements.lock
 
   npm-deps:
     name: dashboard dependencies (npm audit)
@@ -39,8 +41,8 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
       # Only what ships in the built dashboard; dev tools never reach a browser.
@@ -53,8 +55,8 @@ jobs:
       run:
         working-directory: upload-service
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: upload-service/go.mod
           cache-dependency-path: upload-service/go.sum
@@ -65,10 +67,10 @@ jobs:
     name: secret scan (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0  # every commit, not just the last one
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: "1.24"
       - run: go install github.com/zricethezav/gitleaks/v8@v8.24.3
@@ -78,8 +80,8 @@ jobs:
     name: fuzz tests (short budget)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
           cache: pip
@@ -91,7 +93,7 @@ jobs:
         env:
           PCDOCTOR_FUZZ_PROFILE: ci
         run: pytest -c fuzz/pytest.ini fuzz
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: upload-service/go.mod
           cache-dependency-path: upload-service/go.sum

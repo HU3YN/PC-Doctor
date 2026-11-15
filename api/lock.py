@@ -3,8 +3,9 @@ at an exact version, with the hashes pip checks (--require-hashes).
 
     pip install uv && python api/lock.py
 
-Run it after changing a dependency in api/pyproject.toml, and commit the
-result. Dependabot also proposes updates to the lock file.
+Run it after changing a dependency in api/pyproject.toml, and from time to
+time to take up new versions, and commit the result. The security workflow
+checks the locked versions against known vulnerabilities every week.
 """
 
 from __future__ import annotations
