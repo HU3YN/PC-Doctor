@@ -7,9 +7,9 @@ says what it could not check.
 | File | Contents |
 |---|---|
 | `manifest.json` | What was collected, when, how. `schema_version`, `run_id`, `collector` (name, version), `started_at` / `finished_at` (UTC, ISO 8601), `mode` (`quick` or `capture`), `label`, `capture`, `event_window_days`, `is_admin`, `warnings` |
-| `specs.json` | `os`, `system` (manufacturer, model, `type`: desktop / laptop / server), `cpu[]`, `gpu[]`, `memory` (`total_bytes`, `slots_total`, `modules[]`), `motherboard`, `bios`, `power_plan`, `power_plan_guid`, `battery` |
+| `specs.json` | `os`, `system` (manufacturer, model, `type`: desktop / laptop / server), `cpu[]`, `gpu[]`, `memory` (`total_bytes`, `slots_total`, `modules[]`: `slot`, `capacity_bytes`, `speed_mhz`, `configured_speed_mhz`, `manufacturer`, `part_number`, `type`, `form_factor`, `bank`), `motherboard`, `bios`, `power_plan`, `power_plan_guid`, `battery` |
 | `events.json` | `window_days`, `collected_at`, `events[]` (`time`, `provider`, `id`, `level`, `log`, `message`, `data`), `errors[]` |
-| `disks.json` | `physical_disks[]` (`name`, `media_type`, `bus_type`, `health_status`, `operational_status`, `size_bytes`, `firmware`, `reliability`) and `volumes[]` (`drive_letter`, `file_system`, `size_bytes`, `free_bytes`, `health_status`, `is_system`) |
+| `disks.json` | `physical_disks[]` (`name`, `media_type`, `bus_type`, `health_status`, `operational_status`, `size_bytes`, `firmware`, `reliability`, `number`) and `volumes[]` (`drive_letter`, `file_system`, `size_bytes`, `free_bytes`, `health_status`, `is_system`) |
 | `presentmon.csv` | PresentMon's own output, filtered to one program. Any PresentMon header style is accepted (see `workers/pcdoctor_analysis/presentmon.py`) |
 | `sensors.csv` | One row per sample: `elapsed_s` then the fixed columns below. An empty cell means "no reading" |
 | `sensors_raw.json` | One snapshot of LibreHardwareMonitor's sensor names, for debugging the mapping on unusual hardware |
@@ -19,6 +19,21 @@ says what it could not check.
 `target_process`, `presentmon` (`used`, `version`, `exit_code`, `frames`,
 `other_processes_removed`), `sensors` (`source`, `interval_seconds`, `samples`).
 `sensors.source` is `librehardwaremonitor`, `windows+nvidia-smi` or `windows`.
+
+## Optional fields added later
+
+Runs written before these fields existed are still valid: a missing field
+means the same as `null`.
+
+- `disks.json` `physical_disks[].number` (added 2026-11-15): the Windows disk
+  number as an integer (from `Get-PhysicalDisk`'s `DeviceId`), the "Disk 3"
+  that disk events name. `null` if Windows gave none. A disk event naming a
+  number that no listed disk has is a drive that is not plugged in now (or one
+  Windows does not list as a physical disk).
+- `specs.json` `memory.modules[].bank` (added 2026-11-15): the module's
+  `BankLabel` from Windows, trimmed, at most 40 characters, `null` if empty.
+  On some boards every module has the same `slot` (e.g. `DIMM 1`) and only
+  `bank` tells the channels apart (e.g. `P0 CHANNEL A` / `P0 CHANNEL B`).
 
 ## sensors.csv columns
 

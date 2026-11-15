@@ -195,6 +195,32 @@ function Get-PCDoctorBattery {
     }
 }
 
+function ConvertTo-PCDoctorMemoryModule {
+    # One Win32_PhysicalMemory object -> one entry of memory.modules[].
+    # SerialNumber is deliberately never read.
+    param($Module)
+    $capacity = [int64]0
+    if ($Module.Capacity) { $capacity = [int64]$Module.Capacity }
+    $form = $null
+    if ($Module.FormFactor -eq 8) { $form = 'DIMM' } elseif ($Module.FormFactor -eq 12) { $form = 'SODIMM' }
+    # BankLabel names the channel on boards where every DeviceLocator reads
+    # the same (e.g. "P0 CHANNEL A" on AMD AM5). Scrubbed and capped like
+    # any other text read from Windows.
+    $bank = (Protect-PCDoctorText -Text ([string]$Module.BankLabel) -MaxLength 40).Trim()
+    if ($bank.Length -eq 0) { $bank = $null }
+    return [ordered]@{
+        slot                 = Get-PCDoctorTrimmed $Module.DeviceLocator
+        capacity_bytes       = $capacity
+        speed_mhz            = $Module.Speed
+        configured_speed_mhz = $Module.ConfiguredClockSpeed
+        manufacturer         = Get-PCDoctorTrimmed $Module.Manufacturer
+        part_number          = Get-PCDoctorTrimmed $Module.PartNumber
+        type                 = Get-PCDoctorMemoryType $Module.SMBIOSMemoryType
+        form_factor          = $form
+        bank                 = $bank
+    }
+}
+
 function Get-PCDoctorSpecs {
     # The parts in the PC and the Windows version. Deliberately NOT collected:
     # computer name, user names, serial numbers, MAC or IP addresses.
@@ -262,21 +288,9 @@ function Get-PCDoctorSpecs {
     $modules = @()
     $totalMemory = [int64]0
     foreach ($stick in (Get-PCDoctorCim -ClassName 'Win32_PhysicalMemory')) {
-        $capacity = [int64]0
-        if ($stick.Capacity) { $capacity = [int64]$stick.Capacity }
-        $totalMemory += $capacity
-        $form = $null
-        if ($stick.FormFactor -eq 8) { $form = 'DIMM' } elseif ($stick.FormFactor -eq 12) { $form = 'SODIMM' }
-        $modules += [ordered]@{
-            slot                 = Get-PCDoctorTrimmed $stick.DeviceLocator
-            capacity_bytes       = $capacity
-            speed_mhz            = $stick.Speed
-            configured_speed_mhz = $stick.ConfiguredClockSpeed
-            manufacturer         = Get-PCDoctorTrimmed $stick.Manufacturer
-            part_number          = Get-PCDoctorTrimmed $stick.PartNumber
-            type                 = Get-PCDoctorMemoryType $stick.SMBIOSMemoryType
-            form_factor          = $form
-        }
+        $module = ConvertTo-PCDoctorMemoryModule -Module $stick
+        $totalMemory += $module['capacity_bytes']
+        $modules += $module
     }
     if ($totalMemory -le 0 -and $system -and $system.TotalPhysicalMemory) { $totalMemory = [int64]$system.TotalPhysicalMemory }
     $slots = 0
@@ -425,6 +439,35 @@ function Get-PCDoctorNumberOrNull {
     try { return [int64]$Value } catch { return $null }
 }
 
+function ConvertTo-PCDoctorDiskNumber {
+    # Get-PhysicalDisk's DeviceId is the Windows disk number as text ("3"),
+    # the "Disk 3" that disk events name. Anything else -> $null.
+    param($Value)
+    if ($null -eq $Value) { return $null }
+    $number = 0
+    $styles = [System.Globalization.NumberStyles]::Integer
+    if (-not [int]::TryParse(([string]$Value).Trim(), $styles, $script:Invariant, [ref]$number)) { return $null }
+    if ($number -lt 0) { return $null }
+    return $number
+}
+
+function ConvertTo-PCDoctorPhysicalDisk {
+    # One Get-PhysicalDisk object -> one entry of physical_disks[].
+    # SerialNumber is deliberately never read.
+    param($Disk, $Reliability)
+    return [ordered]@{
+        name               = Get-PCDoctorTrimmed $Disk.FriendlyName
+        media_type         = [string]$Disk.MediaType
+        bus_type           = [string]$Disk.BusType
+        health_status      = [string]$Disk.HealthStatus
+        operational_status = (@($Disk.OperationalStatus) -join ', ')
+        size_bytes         = Get-PCDoctorNumberOrNull $Disk.Size
+        firmware           = Get-PCDoctorTrimmed $Disk.FirmwareVersion
+        reliability        = $Reliability
+        number             = ConvertTo-PCDoctorDiskNumber $Disk.DeviceId
+    }
+}
+
 function Get-PCDoctorDisks {
     # Disk health as Windows reports it. Serial numbers and volume labels are
     # deliberately left out.
@@ -452,16 +495,7 @@ function Get-PCDoctorDisks {
                 }
             }
         } catch { $reliabilityFailed = $true }
-        $physical += [ordered]@{
-            name               = Get-PCDoctorTrimmed $disk.FriendlyName
-            media_type         = [string]$disk.MediaType
-            bus_type           = [string]$disk.BusType
-            health_status      = [string]$disk.HealthStatus
-            operational_status = (@($disk.OperationalStatus) -join ', ')
-            size_bytes         = Get-PCDoctorNumberOrNull $disk.Size
-            firmware           = Get-PCDoctorTrimmed $disk.FirmwareVersion
-            reliability        = $reliability
-        }
+        $physical += ConvertTo-PCDoctorPhysicalDisk -Disk $disk -Reliability $reliability
     }
     if ($reliabilityFailed) {
         $warnings.Add('Disk wear, temperature and error counters could not be read (this needs administrator rights).')

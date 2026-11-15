@@ -15,12 +15,12 @@ fixes. It reads, and writes its findings to one folder.
 | What | Where from | Why |
 |---|---|---|
 | CPU, graphics card, motherboard and BIOS model and version | Windows (CIM) | To describe the build and compare it with others |
-| Memory modules: size, speed, part number, slot | Windows (CIM) | Single-channel RAM, XMP off, mixed kits |
+| Memory modules: size, speed, part number, slot and bank (channel) label | Windows (CIM) | Single-channel RAM, XMP off, mixed kits |
 | Graphics driver version and date; screen resolution and refresh rate | Windows (CIM) | Old or missing drivers |
 | Windows edition, version, build, last boot time | Windows (CIM) | Context for crashes |
 | Active power plan | `powercfg /getactivescheme` | Power saver slows a PC down |
 | Battery design and current capacity (laptops) | Windows (WMI) | Worn batteries |
-| Disk model, type, firmware, health, wear, temperature, error counts | `Get-PhysicalDisk`, `Get-StorageReliabilityCounter` | Failing or worn drives |
+| Disk model, type, firmware, Windows disk number, health, wear, temperature, error counts | `Get-PhysicalDisk`, `Get-StorageReliabilityCounter` | Failing or worn drives |
 | Size and free space of each drive letter | `Get-Volume` | Full drives |
 | Hardware events from the last 30 days: hardware errors (WHEA), unexpected shutdowns, blue-screen stop codes, thermal shutdowns, memory test results, disk errors, graphics driver resets, firmware speed limits | Windows System event log | Crashes and failing parts |
 | Frame times of **one** program during a capture | PresentMon | Stutter and frame rate |

@@ -51,6 +51,56 @@ Describe 'ConvertTo-PCDoctorIsoTime' {
     }
 }
 
+Describe 'Disk and memory module entries' {
+    It 'reads the Windows disk number from DeviceId' {
+        ConvertTo-PCDoctorDiskNumber '3' | Should -Be 3
+        ConvertTo-PCDoctorDiskNumber '3' | Should -BeOfType [int]
+        ConvertTo-PCDoctorDiskNumber 0 | Should -Be 0
+        ConvertTo-PCDoctorDiskNumber '' | Should -BeNullOrEmpty
+        ConvertTo-PCDoctorDiskNumber 'abc' | Should -BeNullOrEmpty
+        ConvertTo-PCDoctorDiskNumber '-1' | Should -BeNullOrEmpty
+        ConvertTo-PCDoctorDiskNumber $null | Should -BeNullOrEmpty
+    }
+
+    It 'builds a physical disk entry with its number last' {
+        $fake = [pscustomobject]@{
+            FriendlyName = ' Samsung SSD 980 PRO 2TB '; MediaType = 'SSD'; BusType = 'NVMe'
+            HealthStatus = 'Healthy'; OperationalStatus = @('OK'); Size = 2000398934016
+            FirmwareVersion = '5B2QGXA7'; DeviceId = '3'; SerialNumber = 'FAKE-DISK-SERIAL-0000'
+        }
+        $entry = ConvertTo-PCDoctorPhysicalDisk -Disk $fake -Reliability $null
+        @($entry.Keys) | Should -Be @('name', 'media_type', 'bus_type', 'health_status', 'operational_status', 'size_bytes', 'firmware', 'reliability', 'number')
+        $entry['name'] | Should -Be 'Samsung SSD 980 PRO 2TB'
+        $entry['number'] | Should -Be 3
+        (ConvertTo-Json -InputObject $entry -Depth 8) | Should -Not -Match 'FAKE-DISK-SERIAL-0000'
+        $fake.DeviceId = ''
+        (ConvertTo-PCDoctorPhysicalDisk -Disk $fake -Reliability $null)['number'] | Should -BeNullOrEmpty
+        $fake.DeviceId = 'abc'
+        (ConvertTo-PCDoctorPhysicalDisk -Disk $fake -Reliability $null)['number'] | Should -BeNullOrEmpty
+    }
+
+    It 'builds a memory module entry with its bank label last' {
+        $fake = [pscustomobject]@{
+            DeviceLocator = 'DIMM 1'; BankLabel = '  P0 CHANNEL A '; Capacity = 17179869184
+            Speed = 4800; ConfiguredClockSpeed = 6000; Manufacturer = 'Kingston'; PartNumber = 'KF560C36-16 '
+            SMBIOSMemoryType = 34; FormFactor = 8; SerialNumber = 'FAKE-RAM-SERIAL-0000'
+        }
+        $entry = ConvertTo-PCDoctorMemoryModule -Module $fake
+        @($entry.Keys) | Should -Be @('slot', 'capacity_bytes', 'speed_mhz', 'configured_speed_mhz', 'manufacturer', 'part_number', 'type', 'form_factor', 'bank')
+        $entry['slot'] | Should -Be 'DIMM 1'
+        $entry['bank'] | Should -Be 'P0 CHANNEL A'
+        $entry['capacity_bytes'] | Should -Be 17179869184
+        $entry['form_factor'] | Should -Be 'DIMM'
+        (ConvertTo-Json -InputObject $entry -Depth 8) | Should -Not -Match 'FAKE-RAM-SERIAL-0000'
+        $fake.BankLabel = ''
+        (ConvertTo-PCDoctorMemoryModule -Module $fake)['bank'] | Should -BeNullOrEmpty
+        $fake.BankLabel = $null
+        (ConvertTo-PCDoctorMemoryModule -Module $fake)['bank'] | Should -BeNullOrEmpty
+        $fake.BankLabel = 'B' * 60
+        (ConvertTo-PCDoctorMemoryModule -Module $fake)['bank'] | Should -Be ('B' * 40)
+    }
+}
+
 Describe 'LibreHardwareMonitor mapping' {
     BeforeAll {
         # Names as LibreHardwareMonitor's source defines them.
@@ -301,6 +351,7 @@ Describe 'Reading this PC' {
         $specs.cpu.Count | Should -BeGreaterThan 0
         $specs.cpu[0].name | Should -Not -BeNullOrEmpty
         $specs.memory.total_bytes | Should -BeGreaterThan 0
+        foreach ($module in @($specs.memory.modules)) { $module.Contains('bank') | Should -BeTrue }
         $specs.system.type | Should -BeIn @('desktop', 'laptop', 'server')
         $json = ConvertTo-Json -InputObject $specs -Depth 8
         $json | Should -Not -Match ([regex]::Escape($env:COMPUTERNAME))
@@ -313,6 +364,7 @@ Describe 'Reading this PC' {
         , $events.events | Should -BeOfType [array]
         $disks = Get-PCDoctorDisks
         @($disks.physical_disks).Count | Should -BeGreaterThan 0
+        foreach ($disk in @($disks.physical_disks)) { $disk.Contains('number') | Should -BeTrue }
         @($disks.volumes | Where-Object { $_.is_system }).Count | Should -Be 1
         (ConvertTo-Json -InputObject $disks -Depth 8) | Should -Not -Match '(?i)serial'
     }
