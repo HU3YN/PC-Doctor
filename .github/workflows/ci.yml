@@ -168,6 +168,19 @@ jobs:
       - run: cargo test --locked
       - run: cargo build --release --locked
 
+  deploy-manifests:
+    name: k3s manifests (schema check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+      - run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.6.7
+      # Kubernetes objects are checked against their schemas; the Traefik and
+      # cert-manager ones have none here and are skipped. Not a real cluster.
+      - run: ~/go/bin/kubeconform -summary -strict -ignore-missing-schemas deploy/k8s/*.yaml
+
   web:
     name: dashboard
     runs-on: ubuntu-latest

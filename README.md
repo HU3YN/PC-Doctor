@@ -124,7 +124,9 @@ Start-PCDoctor.cmd -Lan
 
 It prints the address to open, for example `http://192.168.1.20:8080`. Allow
 it through Windows Firewall when asked. Guests on that network can check a PC
-and send photos; only you can sign in and see what is stored.
+and send photos; only you can sign in and see what is stored. This is plain
+HTTP: on a network you share with others, put HTTPS in front
+([docs/lan-https.md](docs/lan-https.md)).
 
 ### Putting it in the cloud
 

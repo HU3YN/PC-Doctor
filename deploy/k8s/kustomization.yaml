@@ -5,6 +5,7 @@ namespace: pcdoctor
 resources:
   - namespace.yaml
   - data.yaml
+  - network.yaml
   - app.yaml
   - ingress.yaml
   - monitoring.yaml
