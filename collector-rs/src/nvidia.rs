@@ -82,6 +82,10 @@ pub fn signature_answer(file: &Path) -> String {
     let output = Command::new(powershell)
         .args(["-NoProfile", "-NonInteractive", "-Command", CHECK_SCRIPT])
         .env("PCDOCTOR_CHECK_FILE", file)
+        // Started from PowerShell 7, Windows PowerShell would inherit its
+        // module path, load 7's security module, fail, and answer nothing.
+        // Without it, 5.1 uses its own modules.
+        .env_remove("PSModulePath")
         .output();
     match output {
         Ok(output) if !output.stdout.is_empty() => String::from_utf8_lossy(&output.stdout).into(),
