@@ -169,6 +169,7 @@ MASTER_ONLY = [
     ("get", "/api/accounts"),
     ("delete", "/api/accounts/1"),
     ("post", "/api/live"),
+    ("post", "/api/auth/password"),
     ("get", "/api/live"),
     ("get", "/api/live/abc"),
     ("delete", "/api/live/abc"),
@@ -181,6 +182,7 @@ SIGNED_IN = [
     ("delete", "/api/me/runs/abc"),
     ("get", "/api/auth/identities"),
     ("delete", "/api/auth/identities/1"),
+    ("post", "/api/auth/logout-everywhere"),
 ]
 
 
@@ -616,3 +618,42 @@ def test_every_response_carries_the_security_headers(client, guest):
 
     snippet = (Path(__file__).resolve().parents[2] / "web" / "security-headers.conf").read_text()
     assert f'Content-Security-Policy "{CONTENT_SECURITY_POLICY}"' in snippet
+
+
+def second_browser(client):
+    from fastapi.testclient import TestClient
+
+    other = TestClient(client.app)
+    assert other.post("/api/auth/login", json=MASTER).status_code == 200
+    return other
+
+
+def test_sign_out_everywhere_ends_every_session(client):
+    other = second_browser(client)
+    assert other.get("/api/runs").status_code == 200
+    answer = client.post("/api/auth/logout-everywhere")
+    assert answer.status_code == 200 and answer.json()["sessions_ended"] == 2
+    assert other.get("/api/runs").status_code == 401  # the other browser too
+    assert client.get("/api/runs").status_code == 401
+
+
+def test_the_master_can_change_the_password(client):
+    other = second_browser(client)
+    new = "a brand new long password"
+    wrong = {"current_password": "not it", "new_password": new}
+    assert client.post("/api/auth/password", json=wrong).status_code == 403
+    short = {"current_password": MASTER["password"], "new_password": "short"}
+    assert client.post("/api/auth/password", json=short).status_code == 422
+    good = {"current_password": MASTER["password"], "new_password": new}
+    assert client.post("/api/auth/password", json=good).status_code == 200
+    assert client.get("/api/runs").status_code == 200  # this browser stays signed in
+    assert other.get("/api/runs").status_code == 401  # every other one is signed out
+    assert client.post("/api/auth/login", json=MASTER).status_code == 401
+    assert client.post("/api/auth/login", json={**MASTER, "password": new}).status_code == 200
+
+
+def test_password_guesses_are_rate_limited(client, monkeypatch):
+    monkeypatch.setattr(auth.login_attempts, "limit", 2)
+    wrong = {"current_password": "guess", "new_password": "whatever long enough"}
+    answers = [client.post("/api/auth/password", json=wrong).status_code for _ in range(3)]
+    assert answers == [403, 403, 429]

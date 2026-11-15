@@ -96,6 +96,13 @@ def end_session(db: Session, token: str | None) -> None:
         db.commit()
 
 
+def end_all_sessions(db: Session, account_id: int) -> int:
+    """Sign an account out on every browser. Returns how many sessions ended."""
+    ended = db.execute(delete(LoginSession).where(LoginSession.account_id == account_id))
+    db.commit()
+    return ended.rowcount or 0
+
+
 def setup_code(data_dir: Path) -> str:
     """The one-time code needed to create the master account.
 

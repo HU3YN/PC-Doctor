@@ -433,6 +433,10 @@ export const api = {
   login: (body: { username: string; password: string }) =>
     request<AuthStatus>("/api/auth/login", json("POST", body)),
   logout: () => request<AuthStatus>("/api/auth/logout", { method: "POST" }),
+  logoutEverywhere: () =>
+    request<{ signed_in: boolean; sessions_ended: number }>("/api/auth/logout-everywhere", { method: "POST" }),
+  changePassword: (body: { current_password: string; new_password: string }) =>
+    request<AuthStatus>("/api/auth/password", json("POST", body)),
 
   oauth: () => request<OAuthInfo>("/api/auth/oauth"),
   identities: () => request<LinkedIdentity[]>("/api/auth/identities"),

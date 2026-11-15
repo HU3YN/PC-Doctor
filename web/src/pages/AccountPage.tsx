@@ -1,10 +1,78 @@
 // The master's account page: other ways to sign in, and who else has an account.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import { ErrorNotice } from "../components/Bits";
 import { formatDateTime } from "../format";
 import { ProviderButtons } from "./AuthPages";
+
+/** Change the password, and sign out on every browser. */
+function Security() {
+  const client = useQueryClient();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const change = useMutation({
+    mutationFn: () => api.changePassword({ current_password: current, new_password: next }),
+    onSuccess: () => {
+      setCurrent("");
+      setNext("");
+    },
+  });
+  const navigate = useNavigate();
+  const everywhere = useMutation({
+    mutationFn: api.logoutEverywhere,
+    onSuccess: async () => {
+      client.clear(); // forget everything the master had on screen, as Sign out does
+      navigate("/");
+      await client.invalidateQueries();
+    },
+  });
+  return (
+    <section className="card stack" style={{ gap: 10 }}>
+      <h2>Password and sessions</h2>
+      <form
+        className="stack"
+        style={{ gap: 10, maxWidth: 420 }}
+        onSubmit={(event) => {
+          event.preventDefault();
+          change.mutate();
+        }}
+      >
+        <label className="field">
+          Current password
+          <input type="password" required autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
+        </label>
+        <label className="field">
+          New password (10 characters or more)
+          <input type="password" required minLength={10} autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
+        </label>
+        <ErrorNotice error={change.error} />
+        {change.isSuccess && <p className="small">Password changed. Every other browser has been signed out.</p>}
+        <button className="btn primary" disabled={change.isPending}>
+          Change password
+        </button>
+      </form>
+      <p className="muted small">
+        Lost a phone or used a shared computer? Sign out everywhere ends every session of this account, this one
+        included.
+      </p>
+      <div>
+        <button
+          className="btn"
+          disabled={everywhere.isPending}
+          onClick={() => {
+            if (window.confirm("Sign out on every browser, this one included?")) everywhere.mutate();
+          }}
+        >
+          Sign out everywhere
+        </button>
+      </div>
+      <ErrorNotice error={everywhere.error} />
+    </section>
+  );
+}
 
 export function AccountPage() {
   const client = useQueryClient();
@@ -31,6 +99,8 @@ export function AccountPage() {
         </div>
       </div>
       <ErrorNotice error={identities.error ?? accounts.error ?? unlink.error ?? remove.error} />
+
+      <Security />
 
       <section className="card stack" style={{ gap: 10 }}>
         <h2>Your sign-in</h2>
