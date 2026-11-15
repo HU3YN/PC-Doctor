@@ -19,6 +19,7 @@
 pub mod lhm;
 pub mod live;
 pub mod manifest;
+pub mod nvidia;
 pub mod presentmon;
 pub mod privacy;
 pub mod resources;

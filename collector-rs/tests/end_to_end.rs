@@ -298,7 +298,12 @@ fn a_silent_sensor_source_is_a_warning_not_a_failure() {
         serde_json::from_str(&fs::read_to_string(run_dir.join("manifest.json")).unwrap()).unwrap();
     if cfg!(windows) {
         // Windows' own counters stand in: loads and RAM, no temperatures.
-        assert_eq!(manifest["capture"]["sensors"]["source"], "windows");
+        // "windows+nvidia-smi" only on a PC with a signed NVIDIA driver.
+        let source = manifest["capture"]["sensors"]["source"].as_str().unwrap();
+        assert!(
+            source == "windows" || source == "windows+nvidia-smi",
+            "{source}"
+        );
         let csv = fs::read_to_string(run_dir.join("sensors.csv")).unwrap();
         let header: Vec<&str> = csv.lines().next().unwrap().split(',').collect();
         let first: Vec<&str> = csv.lines().nth(1).unwrap().split(',').collect();

@@ -343,10 +343,10 @@ fn capture(args: &Args) -> Result<(), String> {
         SensorsInfo {
             // The same names as the PowerShell collector's manifest.
             source: Some(
-                if windows_sensors.is_some() {
-                    "windows"
-                } else {
-                    "librehardwaremonitor"
+                match &windows_sensors {
+                    Some(windows) if windows.has_nvidia_smi() => "windows+nvidia-smi",
+                    Some(_) => "windows",
+                    None => "librehardwaremonitor",
                 }
                 .into(),
             ),

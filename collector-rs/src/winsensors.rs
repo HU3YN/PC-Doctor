@@ -12,10 +12,9 @@
 //! The arithmetic is in plain functions that are tested on any OS; only
 //! `WindowsSensors` itself is Windows-only.
 //!
-//! Not included, unlike the PowerShell collector: `nvidia-smi` for an NVIDIA
-//! card's temperature, power and memory. The PowerShell collector runs it
-//! only after checking NVIDIA's signature; doing that check properly here is
-//! left for later.
+//! With an NVIDIA card, `nvidia-smi` adds its temperature, load, power and
+//! video memory, as in the PowerShell collector - only System32's copy, and
+//! only when it carries NVIDIA's signature (see nvidia.rs).
 
 use std::collections::BTreeMap;
 
@@ -136,6 +135,10 @@ impl WindowsSensors {
     pub fn read(&self) -> Sample {
         Sample::default()
     }
+
+    pub fn has_nvidia_smi(&self) -> bool {
+        false
+    }
 }
 
 #[cfg(windows)]
@@ -164,6 +167,7 @@ mod windows_impl {
     /// to give a value, so the first is made when it opens.
     pub struct WindowsSensors {
         query: QueryHandle,
+        nvidia_smi: Option<std::path::PathBuf>,
         cpu_utility: Option<CounterHandle>,
         cpu_performance: Option<CounterHandle>,
         cpu_frequency: Option<CounterHandle>,
@@ -187,6 +191,7 @@ mod windows_impl {
                 };
                 let sensors = Self {
                     query,
+                    nvidia_smi: crate::nvidia::find(),
                     cpu_utility: add(CPU_UTILITY_ALL),
                     cpu_performance: add(CPU_PERFORMANCE),
                     cpu_frequency: add(CPU_FREQUENCY),
@@ -204,13 +209,29 @@ mod windows_impl {
             unsafe {
                 PdhCollectQueryData(self.query);
             }
-            sample_from(
+            let mut sample = sample_from(
                 &self.cpu_utility.map(array).unwrap_or_default(),
                 self.cpu_performance.and_then(single),
                 self.cpu_frequency.and_then(single),
                 &self.gpu_engines.map(array).unwrap_or_default(),
                 memory(),
-            )
+            );
+            if let Some(nvidia_smi) = &self.nvidia_smi {
+                let card = crate::nvidia::read(nvidia_smi);
+                for column in [Column::GpuTemp, Column::GpuPower, Column::GpuVramUsed] {
+                    sample.set(column, card.get(column));
+                }
+                // nvidia-smi's own load figure, when it gives one.
+                if card.get(Column::GpuLoad).is_some() {
+                    sample.set(Column::GpuLoad, card.get(Column::GpuLoad));
+                }
+            }
+            sample
+        }
+
+        /// True when nvidia-smi was found and passed the signature check.
+        pub fn has_nvidia_smi(&self) -> bool {
+            self.nvidia_smi.is_some()
         }
     }
 
