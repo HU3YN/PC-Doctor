@@ -36,3 +36,8 @@ updates:
     directory: /
     schedule: { interval: weekly }
     open-pull-requests-limit: 5
+    # One pull request for all action updates: each pull request starts
+    # about twenty CI jobs.
+    groups:
+      actions:
+        patterns: ["*"]

@@ -6,6 +6,9 @@ name: security
 
 on:
   push:
+    # Dependabot's branches are tested once, by pull_request below; without
+    # this every Dependabot pull request ran both workflows twice.
+    branches-ignore: ["dependabot/**"]
   pull_request:
   schedule:
     - cron: "17 6 * * 1"
