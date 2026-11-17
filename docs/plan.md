@@ -4,7 +4,11 @@ This file is the handoff between work sessions. To continue, start a session
 on this repository and say: "Read docs/plan.md and carry out 'Plan for the next
 session', starting at Step 0."
 
-## Where things stand (2026-11-15, merged into the default branch `claude/festive-cray-nw5hzp`)
+## Where things stand (2026-11-17)
+
+The default branch `claude/festive-cray-nw5hzp` holds everything up to
+2026-11-15. The work of 2026-11-17 is on `claude/epic-archimedes-peiqrm`,
+not merged yet.
 
 Every phase of [the roadmap](roadmap.md) now has code that passes its tests
 in CI. Almost none of it has met real hardware, real photos, real accounts or
@@ -70,7 +74,67 @@ game running (GPU load median 3%). It showed that "GPU-limited" and
 "CPU-limited" reported "passed" on an idle PC; they now report no data with
 a note saying the PC was idle (rules 2026.11.2). Recorded in results.md.
 
+### Done on 2026-11-17 (the plan's Step 0 and the first half of Step 1)
+
+| Item | What was done |
+|---|---|
+| Step 0 | The default branch's last `ci` and `security` push runs passed. Since the first Dependabot batch (2026-11-15, 13 pull requests) **GitHub Actions has not started a single job**: every run fails within seconds and has no log, the scheduled security run included. The reason shows only on the run's page (owner to look; usually the account's Actions minutes or spending limit) |
+| CI | Dependabot branches ran both workflows twice (push and pull_request): the push trigger skips `dependabot/**`; action updates come as one grouped pull request |
+| Dependabot | All 13 pull requests read, none merged: see "Dependabot pull requests" below |
+| Owner's decisions | CPU temperature: **prompted install, then remove** (below). Other changes: none named yet |
+| Frames | PresentMon is in the collector zip (release and server), with Intel's licence; the separate download is gone. A copy without it (git) fetches and checks it at the first capture |
+| Load check | A capture first checks that something is under load (GPU 30% or CPU 50%, three readings), waits up to 3 minutes for a game, and records `capture.load_at_start` |
+| CPU temperature | Researched and prepared, not built: `collector/tests/Probe-CpuTemperature.ps1` for the owner's PC |
+
+**None of this has run on Windows.** With Actions down, the PowerShell was
+checked with Pester and PSScriptAnalyzer on PowerShell 7 for Linux (the
+Windows-only tests cannot pass there); the Python and web suites ran locally.
+
+#### CPU temperature: what the research found (2026-11-17)
+
+- LibreHardwareMonitor no longer loads a temporary driver. From 0.9.5 on
+  (latest stable 0.9.6, February 2026) it needs **PawnIO**, a separate kernel
+  driver that is installed on the PC and stays. The driver it used before,
+  WinRing0, is the one Microsoft Defender flags as vulnerable, so an old
+  LibreHardwareMonitor is not an option.
+- Read from PawnIO's official installer itself (2.2.0.0, SHA-256
+  `1F519A22...FBA3032`, from github.com/namazso/PawnIO.Setup): it is signed
+  by its author (namazso.eu, GLOBALTRUST code-signing certificate); it has
+  `-install`, `-uninstall` and `-silent`; it says "This installer can be
+  redistributed unmodified"; it needs Windows 10 1809 or later; it refuses to
+  install over an existing installation. The driver is GPL-2.0.
+- **Not known yet:** who signed the driver file it installs (it is packed
+  inside the installer), whether Memory Integrity and the vulnerable-driver
+  blocklist accept it, whether Defender or anti-cheat react, whether the
+  uninstall is complete, and whether LibreHardwareMonitorLib loads in Windows
+  PowerShell 5.1. pawnio.eu was not reachable from the session. The probe
+  answers these on the owner's PC.
+- **The owner's decision (2026-11-17):** bundle the PawnIO installer and
+  LibreHardwareMonitorLib; during a capture, after a clear yes/no question,
+  install PawnIO, read temperatures, and uninstall it when the capture ends;
+  amend the read-only rule for exactly that. If PawnIO is already on the PC,
+  use it and leave it there. If the probe shows a bad signature, a block, or
+  an unclean uninstall, go back to the owner before building.
+
+#### Dependabot pull requests (read 2026-11-17, none has a CI result)
+
+Every image bump keeps its digest pin and the action SHAs match their tags.
+- Wait for the grouped actions pull request instead of merging #4, #7, #9,
+  #11, #12 one by one (it appears once this branch is on the default branch).
+- Merge when CI is green: #6 nginx 1.29, #2 Go 1.27 (build stage), #3 Node
+  26 (build stage), #5 Redis 8 (its volume cannot go back to 7).
+- Test the scale stack locally first: #8 Prometheus 3, #10 Grafana 13 (CI
+  does not check alerts or the dashboard; `deploy/k8s` stays on the old
+  versions and would need the same change).
+- Hold: #1 Python 3.15 (CI tests 3.11 and 3.13 only; PyYAML 6.0.3 has no
+  3.15 wheel; `api/lock.py` and the CI matrix would have to move too).
+- Close: #13 (TypeScript 7 is outside what the locked typescript-eslint
+  accepts, `<6.1.0`); take the user-event patch separately.
+
 ### Known gaps
+- **GitHub Actions is not starting jobs** (see above). Nothing pushed since
+  2026-11-15 has a CI result; the Windows jobs are the only Windows this
+  project has without the owner's PC.
 
 - The owner's PC has run a quick check and an idle capture. A capture with
   the **current** collector, PresentMon and LibreHardwareMonitor, while a
@@ -95,65 +159,63 @@ check of `collector-rs` without TLS rewrites `Cargo.lock`: restore it before
 committing. Never squash or rebase merged history: `.gitleaksignore` allows
 three findings by commit SHA.
 
-### Step 0 - Confirm the starting point, and ask the owner
+### Step 0 - Confirm the starting point
 
-1. `git pull`; check that the latest `ci` and `security` runs passed. The
-   merge on 2026-11-15 turned on the weekly security run and Dependabot:
-   expect a first batch of Dependabot pull requests; review them, do not
-   merge them blindly.
-2. **Ask the owner what else they want changed.** On 2026-11-15 they said
-   they want to "change some things around" without saying what. Write the
-   answers into this file before starting Step 1.
+1. `git pull`; look at the latest `ci` and `security` runs. **If runs still
+   fail within seconds with no log, Actions is still blocked** (see "Done on
+   2026-11-17"): tell the owner first, and until it is fixed test locally
+   and say in each commit what was and was not run. Once Actions works, the
+   first run on this work is the first time any of it meets Windows: read
+   the two Windows jobs closely.
+2. Dependabot: follow the list under "Dependabot pull requests" above.
+3. Ask the owner whether there is anything else to change (asked on
+   2026-11-17; the answer was the CPU temperature decision only).
 
-### Step 1 - Convenience first: one download, frames and temperatures included
+### Step 1 - Convenience: what is left
 
 **The owner's requirement (2026-11-15):** the person checking a PC must not
 have to download, install or start any other program to get frame times and
 temperatures. One download, double-click, and the capture has everything.
-Today it needs `Get-Tools.ps1` (PresentMon) and a separately started
-LibreHardwareMonitor with its web server on - the owner's own capture missed
-both. The two halves are not equally easy:
 
-**Frames (PresentMon) - straightforward.**
-1. Bundle the pinned PresentMon in the collector zip and in the release. This
-   reverses the 2026-11-15 decision to make it a separate download. Its
-   licence allows it: PresentMon's LICENSE.txt is a permissive MIT-style
-   licence (Copyright Intel) - ship that file with it.
-2. The release workflow fetches PresentMon and checks the pinned SHA-256, so
-   the zip stays reproducible and attestable; `collector_build.py` and
-   `/api/collector.zip` include it the same way. Keep the Intel signature
-   check at run time (`Find-PCDoctorPresentMon`).
-3. The collector picks the game itself (the busiest presenting program) and
-   checks **at the start** that something is under load - warn and wait,
-   instead of reporting an idle PC after 5 minutes.
+Frames are done (2026-11-17): PresentMon is in the zip, the game is picked
+after the capture (the busiest presenting program), and the capture waits
+for load at the start. Left:
 
-**Temperatures - one decision for the owner first.**
-- GPU temperature already works with nothing extra on NVIDIA (signed
-  nvidia-smi; proven on the owner's capture). AMD and Intel GPUs: check what
-  Windows or the vendor driver exposes without a kernel driver.
-- **CPU temperature needs ring-0 access**, which Windows does not offer to a
-  plain program. The project rule says the collector "never installs
-  drivers", and Get-Tools.ps1 leaves LibreHardwareMonitor out for exactly
-  that reason. Present these options and get the owner's decision before
-  writing code - do not quietly change the rule:
-  1. **Recommended:** bundle LibreHardwareMonitorLib (MPL-2.0 - redistribution
-     is allowed; ship its licence and say where its source is) and load it
-     from the collector only during a capture, as administrator, after a
-     clear prompt ("PC Doctor will load a temporary hardware-monitoring
-     driver to read temperatures; it is removed when the capture ends").
-     Amend the read-only rule to allow exactly that, nothing else.
-  2. Keep the rule: no CPU temperature without the user starting a tool
-     (today's behaviour, with better prompts).
-  3. Use only what Windows offers without a driver (ACPI thermal zones):
-     usually not the CPU's real temperature - say so if used.
-- **Research before building option 1** (do not rely on memory): which
-  driver current LibreHardwareMonitor releases load, whether it is signed,
-  whether Microsoft Defender or the vulnerable-driver blocklist flags it,
-  how it is unloaded, and test it on the owner's PC first (an attached run).
-- When it is built, update together: README, collector/README.md,
-  docs/privacy.md, docs/rules.md (the rule), threat-model items #1 and #2,
-  docs/testing.md, the Get page text, the release workflow and the Windows
-  CI job.
+1. **The probe, on the owner's PC.** The owner runs
+   `collector\tests\Probe-CpuTemperature.ps1` in an administrator PowerShell
+   and attaches `collector\runs\cpu-temperature-probe.json`. Read in it:
+   the installed driver's signer and status, `protections`, `reading.error`
+   and the temperature sensor names, `leftovers.clean`, `defender`.
+2. **If the probe is clean, build it** as the owner decided (see "CPU
+   temperature: what the research found"):
+   - Bundle `PawnIO_setup.exe` (unmodified, pinned SHA-256, its GPL-2.0
+     licence text and where the source is) and LibreHardwareMonitorLib 0.9.6
+     with the libraries the probe lists (MPL-2.0 and MIT: ship the licences),
+     fetched and hash-checked by `collector_build.py` like PresentMon.
+   - In a capture, as administrator, when LibreHardwareMonitor's web server
+     is not answering: ask ("PC Doctor can install a hardware-monitoring
+     driver (PawnIO) to read the CPU temperature and remove it when the
+     capture ends. Install it? [y/N]"), default no, never in
+     `-NonInteractive` without an explicit switch. Check the installer's
+     signature before running it. Uninstall in a `finally`, and also when
+     the window is closed mid-capture if that can be done; say plainly at
+     the end whether the driver is gone. PawnIO already installed: use it,
+     never remove it.
+   - Read sensors in the collector's own process only if the probe shows
+     the libraries load in Windows PowerShell 5.1; `sensors.source` gets a
+     new value (document it in run-format.md, teach the analyzer).
+   - Record in the manifest that a driver was installed and removed.
+   - The Rust collector is not part of this.
+3. **If the probe is not clean** (driver not signed by Microsoft or blocked,
+   Defender detection, leftovers, libraries do not load): stop and take the
+   finding to the owner; the fallback they did not choose is "use PawnIO
+   only if it is already installed".
+4. AMD and Intel GPUs: check what Windows or the vendor driver exposes
+   without a kernel driver (NVIDIA works through signed nvidia-smi).
+5. When it is built, update together: README, collector/README.md,
+   docs/privacy.md, docs/rules.md and the rule at the bottom of this file,
+   threat-model items #1 and #2, docs/testing.md, the Get page text, the
+   release workflow and the Windows CI job.
 
 ### Step 2 - The owner's hardware (needs the owner)
 
@@ -163,8 +225,9 @@ both. The two halves are not equally easy:
    answers and the owner's yes, make it the first real case in `eval/cases/`
    (the raw zip is not committed without that yes; it is in the owner's
    `collector\runs` folder).
-2. Next capture: with the current default branch, a game running, and
-   (after Step 1) nothing else to start.
+2. Next capture: with the current default branch and a game running.
+   Frame times need nothing else now; until Step 1 is finished, CPU
+   temperature still needs LibreHardwareMonitor started by hand.
 3. First look at the new `memory.modules[].bank` values: if they tell the
    two channels apart (e.g. "P0 CHANNEL A" / "P0 CHANNEL B"), extend
    `memory.single_channel` to flag sticks on one channel (wrong slots). Do
