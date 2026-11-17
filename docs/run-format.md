@@ -34,6 +34,12 @@ means the same as `null`.
   `BankLabel` from Windows, trimmed, at most 40 characters, `null` if empty.
   On some boards every module has the same `slot` (e.g. `DIMM 1`) and only
   `bank` tells the channels apart (e.g. `P0 CHANNEL A` / `P0 CHANNEL B`).
+- `manifest.json` `capture.load_at_start` (added 2026-11-17): what the
+  collector saw just before the capture began - `busy` (`true`, `false`, or
+  `null` when the PC gave no load reading), `gpu_load_pct` and `cpu_load_pct`
+  (medians of three readings) and `waited_seconds` (how long it waited for a
+  game or stress test to start). "Busy" is a GPU at 30% or more, or a CPU at
+  50% or more.
 
 ## sensors.csv columns
 

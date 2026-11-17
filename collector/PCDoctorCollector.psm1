@@ -779,6 +779,43 @@ function Get-PCDoctorWindowsSample {
     return $sample
 }
 
+function Test-PCDoctorUnderLoad {
+    # Is a game or stress test running? Asked before a capture starts, so an
+    # idle PC is noticed in the first seconds and not after five minutes.
+    # A game loads the GPU; a CPU stress test loads only the CPU, so either
+    # counts. The limits sit well above the analyzer's "idle" line (median GPU
+    # load under 15%) so a run that passes here is not called idle later.
+    # Busy is $null when the PC gave no load reading at all: then nothing is
+    # known and the capture should simply go ahead.
+    param([object[]]$Samples, [double]$GpuLoadPct = 30.0, [double]$CpuLoadPct = 50.0)
+    $medians = @{}
+    foreach ($column in @('gpu_load_pct', 'cpu_load_pct')) {
+        $values = @(foreach ($sample in @($Samples)) {
+                if ($sample -and $null -ne $sample[$column]) { [double]$sample[$column] }
+            }) | Sort-Object
+        $values = @($values)
+        if ($values.Count -eq 0) { $medians[$column] = $null; continue }
+        $middle = [int][math]::Floor($values.Count / 2)
+        if ($values.Count % 2) { $medians[$column] = $values[$middle] }
+        else { $medians[$column] = ($values[$middle - 1] + $values[$middle]) / 2.0 }
+    }
+    $busy = $null
+    if ($null -ne $medians['gpu_load_pct'] -or $null -ne $medians['cpu_load_pct']) {
+        $busy = (($null -ne $medians['gpu_load_pct'] -and $medians['gpu_load_pct'] -ge $GpuLoadPct) -or
+            ($null -ne $medians['cpu_load_pct'] -and $medians['cpu_load_pct'] -ge $CpuLoadPct))
+    }
+    return [ordered]@{ busy = $busy; gpu_load_pct = $medians['gpu_load_pct']; cpu_load_pct = $medians['cpu_load_pct'] }
+}
+
+function Format-PCDoctorLoad {
+    # "GPU 3%, CPU 7%" for the messages about an idle PC.
+    param($Verdict)
+    $parts = @()
+    if ($null -ne $Verdict.gpu_load_pct) { $parts += ('GPU {0:0}%' -f $Verdict.gpu_load_pct) }
+    if ($null -ne $Verdict.cpu_load_pct) { $parts += ('CPU {0:0}%' -f $Verdict.cpu_load_pct) }
+    return ($parts -join ', ')
+}
+
 function Format-PCDoctorSensorRow {
     # One CSV line: elapsed seconds, then the columns in their fixed order.
     # Always a dot for decimals, whatever the Windows region settings are.

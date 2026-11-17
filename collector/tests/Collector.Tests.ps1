@@ -29,6 +29,36 @@ Describe 'Protect-PCDoctorText' {
     }
 }
 
+Describe 'Test-PCDoctorUnderLoad' {
+    It 'calls a desktop with nothing running idle' {
+        $verdict = Test-PCDoctorUnderLoad -Samples @(@{ gpu_load_pct = 3; cpu_load_pct = 6 }, @{ gpu_load_pct = 2; cpu_load_pct = 9 }, @{ gpu_load_pct = 4; cpu_load_pct = 5 })
+        $verdict.busy | Should -BeFalse
+        $verdict.gpu_load_pct | Should -Be 3
+        $verdict.cpu_load_pct | Should -Be 6
+        Format-PCDoctorLoad $verdict | Should -Be 'GPU 3%, CPU 6%'
+    }
+    It 'counts a game (GPU) and a CPU stress test (CPU only) as load' {
+        (Test-PCDoctorUnderLoad -Samples @(@{ gpu_load_pct = 97; cpu_load_pct = 20 })).busy | Should -BeTrue
+        (Test-PCDoctorUnderLoad -Samples @(@{ gpu_load_pct = 1; cpu_load_pct = 100 })).busy | Should -BeTrue
+    }
+    It 'is not started by one busy second' {
+        (Test-PCDoctorUnderLoad -Samples @(@{ gpu_load_pct = 2 }, @{ gpu_load_pct = 90 }, @{ gpu_load_pct = 3 })).busy | Should -BeFalse
+    }
+    It 'takes the middle of an even number of readings' {
+        (Test-PCDoctorUnderLoad -Samples @(@{ gpu_load_pct = 20 }, @{ gpu_load_pct = 50 })).gpu_load_pct | Should -Be 35
+    }
+    It 'says nothing when the PC gave no load reading' {
+        $verdict = Test-PCDoctorUnderLoad -Samples @(@{ gpu_load_pct = $null; cpu_load_pct = $null }, $null)
+        $verdict.busy | Should -BeNullOrEmpty
+        $verdict.busy -eq $false | Should -BeFalse
+        Format-PCDoctorLoad $verdict | Should -Be ''
+        (Test-PCDoctorUnderLoad -Samples @()).busy | Should -BeNullOrEmpty
+    }
+    It 'judges on the reading it has when the other is missing' {
+        (Test-PCDoctorUnderLoad -Samples @(@{ gpu_load_pct = $null; cpu_load_pct = 8 })).busy | Should -BeFalse
+    }
+}
+
 Describe 'ConvertTo-PCDoctorNumber' {
     It 'reads numbers, formatted values and decimal commas' {
         ConvertTo-PCDoctorNumber 45.5 | Should -Be 45.5

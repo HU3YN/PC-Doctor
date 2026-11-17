@@ -14,7 +14,8 @@
                test runs (5 minutes by default). Needed for stutter, overheating
                and CPU/GPU-limit questions.
 
-    Frame times need PresentMon (run Get-Tools.ps1 once to fetch it).
+    Frame times need PresentMon. The collector download includes it; a copy
+    without it fetches and checks it at the first capture (Get-Tools.ps1).
     Temperatures need LibreHardwareMonitor running with Options > Remote Web
     Server > Run switched on. Without them the capture still runs with what
     Windows itself can report.
@@ -48,6 +49,10 @@
     Seconds to wait before a capture starts, to switch to the game. Default 10
     when run by hand, 0 with -NonInteractive.
 
+.PARAMETER NoDownload
+    Never fetch PresentMon, even when it is missing. Frame times are then
+    skipped unless it is already in the tools folder.
+
 .PARAMETER NonInteractive
     Ask nothing and wait for nothing (for scripts and tests).
 
@@ -73,6 +78,7 @@ param(
     [int]$StartDelay = -1,
     [string]$PresentMonPath = '',
     [string]$LhmUrl = 'http://localhost:8085',
+    [switch]$NoDownload,
     [switch]$NoZip,
     [switch]$NonInteractive
 )
@@ -163,8 +169,21 @@ if ($Mode -eq 'Capture') {
     $presentMon = $found.Path
     if ($found.Problem) {
         Add-Warning $found.Problem
+    } elseif (-not $presentMon -and -not $PresentMonPath -and -not $NoDownload) {
+        # The download from a PC Doctor server and the release both carry
+        # PresentMon. A copy from git does not, so fetch it here instead of
+        # sending the person off to run another script. Get-Tools.ps1 keeps
+        # the file only if it has the pinned SHA-256 and Intel's signature.
+        Write-Step 'PresentMon (frame times) is not in this folder: fetching it from github.com and checking it ...'
+        try { & (Join-Path $scriptDir 'Get-Tools.ps1') | ForEach-Object { $log.Add("Get-Tools: $_") } } catch { $log.Add("Get-Tools: $($_.Exception.Message)") }
+        $found = Find-PCDoctorPresentMon -ToolsDir (Join-Path $scriptDir 'tools') -Elevated:$isAdmin
+        $presentMon = $found.Path
+        if ($found.Problem) { Add-Warning $found.Problem }
+    }
+    if ($found.Problem) {
+        $presentMon = $null   # reported above
     } elseif (-not $presentMon) {
-        Add-Warning 'PresentMon was not found, so frame times are skipped. Run Get-Tools.ps1 once to fetch it.'
+        Add-Warning 'PresentMon could not be found or fetched, so frame times are skipped. With internet access, run Get-Tools.ps1; or use the collector download from a release, which includes it.'
     } elseif (-not $isAdmin) {
         Add-Warning 'PresentMon needs administrator rights to record frame times; it may record nothing.'
     }
@@ -194,6 +213,45 @@ if ($Mode -eq 'Capture') {
             Start-Sleep -Seconds 1
         }
         Write-Host "`r  Capturing ...          "
+    }
+
+    # Is anything running? Checked now, not after the capture: the first real
+    # capture of this project recorded five minutes of an idle desktop.
+    $readSample = {
+        if ($sensorSource -eq 'librehardwaremonitor') {
+            ConvertTo-PCDoctorSample -Sensors (Get-PCDoctorLhmSensors -Url $LhmUrl) -GpuPrefix $gpuPrefix
+        } else {
+            Get-PCDoctorWindowsSample -NvidiaSmi $nvidiaSmi
+        }
+    }
+    $loadSamples = New-Object System.Collections.Generic.List[object]
+    foreach ($i in 1..3) { $loadSamples.Add((& $readSample)); Start-Sleep -Milliseconds 700 }
+    $load = Test-PCDoctorUnderLoad -Samples $loadSamples
+    $waited = 0
+    if ($load.busy -eq $false -and $interactive) {
+        Write-Host ''
+        Write-Host ("  Nothing seems to be running ({0})." -f (Format-PCDoctorLoad $load)) -ForegroundColor Yellow
+        Write-Host '  Start your game or stress test: the capture begins by itself once it is under load.' -ForegroundColor Yellow
+        Write-Host '  Press Enter to capture anyway. Waiting up to 3 minutes ...' -ForegroundColor Yellow
+        $waitWatch = [System.Diagnostics.Stopwatch]::StartNew()
+        while ($load.busy -eq $false -and $waitWatch.Elapsed.TotalSeconds -lt 180) {
+            $pressed = $false
+            try { while ([Console]::KeyAvailable) { if ([Console]::ReadKey($true).Key -eq 'Enter') { $pressed = $true } } } catch { }
+            if ($pressed) { break }
+            # Three fresh readings in a row, so one busy second (a loading
+            # screen, a window opening) does not start the capture.
+            $loadSamples.Clear()
+            foreach ($i in 1..3) { $loadSamples.Add((& $readSample)); Start-Sleep -Milliseconds 700 }
+            $load = Test-PCDoctorUnderLoad -Samples $loadSamples
+            Write-Host ("`r  Waiting for load: {0}        " -f (Format-PCDoctorLoad $load)) -NoNewline
+        }
+        Write-Host ''
+        $waited = [int]$waitWatch.Elapsed.TotalSeconds
+    }
+    if ($load.busy -eq $false) {
+        Add-Warning ("The PC looked idle when the capture started ({0}). Without a game or stress test running, the performance checks have nothing to judge." -f (Format-PCDoctorLoad $load))
+    } elseif ($load.busy) {
+        Write-Step ("Under load ({0}): capturing." -f (Format-PCDoctorLoad $load))
     }
 
     $rawCsv = Join-Path $runDir 'presentmon_raw.csv'
@@ -227,11 +285,7 @@ if ($Mode -eq 'Capture') {
     $tick = 0
     while ($watch.Elapsed.TotalSeconds -lt $Seconds) {
         $elapsed = $watch.Elapsed.TotalSeconds
-        if ($sensorSource -eq 'librehardwaremonitor') {
-            $sample = ConvertTo-PCDoctorSample -Sensors (Get-PCDoctorLhmSensors -Url $LhmUrl) -GpuPrefix $gpuPrefix
-        } else {
-            $sample = Get-PCDoctorWindowsSample -NvidiaSmi $nvidiaSmi
-        }
+        $sample = & $readSample
         $rows.Add((Format-PCDoctorSensorRow -ElapsedSeconds $elapsed -Sample $sample))
         if ($interactive) {
             $percent = [int][math]::Min(100, 100 * $watch.Elapsed.TotalSeconds / $Seconds)
@@ -286,6 +340,7 @@ if ($Mode -eq 'Capture') {
         requested_seconds = $Seconds
         actual_seconds    = $actualSeconds
         target_process    = $targetProcess
+        load_at_start     = [ordered]@{ busy = $load.busy; gpu_load_pct = $load.gpu_load_pct; cpu_load_pct = $load.cpu_load_pct; waited_seconds = $waited }
         presentmon        = $pmInfo
         sensors           = [ordered]@{
             source           = $sensorSource

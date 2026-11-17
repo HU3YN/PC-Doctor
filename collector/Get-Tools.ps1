@@ -47,7 +47,7 @@ $download = "$target.download"
 Write-Host "Downloading $url"
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $url -OutFile $download -UseBasicParsing
+    Invoke-WebRequest -Uri $url -OutFile $download -UseBasicParsing -TimeoutSec 60
 } catch {
     Write-Host "Download failed: $($_.Exception.Message)" -ForegroundColor Red
     Write-Host 'You can also download it by hand from https://github.com/GameTechDev/PresentMon/releases'
