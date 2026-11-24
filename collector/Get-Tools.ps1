@@ -4,12 +4,15 @@
     collector's "tools" folder.
 
 .DESCRIPTION
-    Run this once, on a PC with internet access. It downloads one file - the
-    PresentMon console program - checks that it is the exact file expected
-    (SHA-256) and that Intel signed it, and saves it next to the collector.
-    Nothing is installed and no setting is changed: delete the "tools" folder
-    to undo it. Copy the whole collector folder to a USB stick afterwards and
-    PresentMon travels with it.
+    You do not normally need to run this. The collector download (from a
+    release or a PC Doctor server) already has PresentMon inside, and a copy
+    without it (from git) runs this script by itself at the first capture.
+    Run it by hand to prepare a copy for a PC with no internet access.
+
+    It downloads one file - the PresentMon console program - checks that it is
+    the exact file expected (SHA-256) and that Intel signed it, and saves it
+    next to the collector. Nothing is installed and no setting is changed:
+    delete the "tools" folder to undo it.
 
     Temperatures come from LibreHardwareMonitor, which this script does NOT
     fetch, because it loads a hardware-access driver and that should be your

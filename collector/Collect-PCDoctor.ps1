@@ -183,7 +183,7 @@ if ($Mode -eq 'Capture') {
     if ($found.Problem) {
         $presentMon = $null   # reported above
     } elseif (-not $presentMon) {
-        Add-Warning 'PresentMon could not be found or fetched, so frame times are skipped. With internet access, run Get-Tools.ps1; or use the collector download from a release, which includes it.'
+        Add-Warning 'PresentMon could not be found or fetched, so frame times are skipped. Use the collector download from a release or a PC Doctor server, which includes it.'
     } elseif (-not $isAdmin) {
         Add-Warning 'PresentMon needs administrator rights to record frame times; it may record nothing.'
     }

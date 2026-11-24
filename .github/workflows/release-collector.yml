@@ -7,7 +7,8 @@ name: release collector
 #
 # The zip is built by api/pcdoctor_api/services/collector_build.py - the same
 # code the server uses for /api/collector.zip - so the copy a PC Doctor server
-# offers for that commit has the same SHA-256 as the release. Check a copy
+# offers for that commit has the same SHA-256 as the release. Intel's
+# PresentMon is fetched (pinned by SHA-256) and packed inside. Check a copy
 # before running it as administrator:
 #
 #   gh attestation verify PCDoctor-collector.zip --repo HU3YN/PC-Doctor
@@ -36,8 +37,16 @@ jobs:
         with:
           persist-credentials: false
 
+      # PresentMon's binary is not in git. This downloads the version
+      # Get-Tools.ps1 pins from Intel's release and fails unless its SHA-256
+      # is the pinned one.
+      - name: Fetch PresentMon (Intel's frame-time recorder, checked by SHA-256)
+        run: python3 api/pcdoctor_api/services/collector_build.py fetch-presentmon collector
+
       - name: Build the zip (standard library only, same bytes as /api/collector.zip)
-        run: python3 api/pcdoctor_api/services/collector_build.py collector dist/PCDoctor-collector.zip
+        run: >-
+          python3 api/pcdoctor_api/services/collector_build.py --require-presentmon
+          collector dist/PCDoctor-collector.zip
 
       - name: Record its SHA-256
         working-directory: dist
@@ -70,8 +79,12 @@ jobs:
 
               Get-FileHash .\PCDoctor-collector.zip -Algorithm SHA256
 
-          PresentMon is not included: run Get-Tools.ps1 once (it checks Intel's
-          signature), or download it from your PC Doctor server.
+          PresentMon is included, so frame-time captures work straight from
+          this one zip. It is Intel's program, unmodified
+          (tools/PresentMon-*-x64.exe): this build checked its SHA-256 against
+          the one pinned in Get-Tools.ps1, and the collector checks Intel's
+          signature every time before running it. Intel's licence is in
+          PresentMon-LICENSE.txt.
           EOF
           gh release create "$TAG" dist/PCDoctor-collector.zip dist/PCDoctor-collector.zip.sha256 \
             --verify-tag --title "Collector $TAG" --notes-file notes.md

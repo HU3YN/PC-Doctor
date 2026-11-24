@@ -24,7 +24,11 @@ RUN pip install --require-hashes -r api/requirements.lock \
 
 # The Windows collector, offered for download from the dashboard.
 COPY collector/PCDoctor.cmd collector/Collect-PCDoctor.ps1 collector/PCDoctorCollector.psm1 \
-     collector/Get-Tools.ps1 collector/README.md collector/
+     collector/Get-Tools.ps1 collector/README.md collector/PresentMon-LICENSE.txt collector/
+# Intel's PresentMon goes inside that download, so the zip this server offers
+# is the same file as the release for this commit. It is not in git: fetch the
+# version Get-Tools.ps1 pins. The build fails unless its SHA-256 is the pinned one.
+RUN python api/pcdoctor_api/services/collector_build.py fetch-presentmon collector
 ENV PCDOCTOR_COLLECTOR_DIR=/app/collector
 
 # Run as an ordinary user; /data holds the uploaded runs.
