@@ -1139,6 +1139,7 @@ trap {
     if ($_.Exception -is [System.Reflection.ReflectionTypeLoadException]) {
         $text += ' | ' + (($_.Exception.LoaderExceptions | ForEach-Object { $_.Message } | Select-Object -Unique -First 3) -join ' | ')
     }
+    if ($_.InvocationInfo) { $text += ' (line ' + $_.InvocationInfo.ScriptLineNumber + ': ' + $_.InvocationInfo.Line.Trim() + ')' }
     [System.IO.File]::WriteAllText($OutFile + '.error', $text)
     exit 1
 }
@@ -1159,9 +1160,14 @@ public static class PCDoctorLhmResolver {
 Add-Type -Path (Join-Path $LibDir 'LibreHardwareMonitorLib.dll')
 $computer = New-Object LibreHardwareMonitor.Hardware.Computer
 $computer.IsCpuEnabled = $true
-$computer.IsGpuEnabled = $true
-$computer.IsMemoryEnabled = $true
 $computer.Open()
+# The CPU first, then each other group on its own: one that fails on this
+# hardware (seen on GitHub's VM, 2026-11-24) must not cost the CPU reading.
+$skipped = @()
+foreach ($group in @('IsGpuEnabled', 'IsMemoryEnabled')) {
+    try { $computer.$group = $true } catch { $skipped += $group + ': ' + $_.Exception.Message }
+}
+if ($skipped) { [System.IO.File]::WriteAllText($OutFile + '.skipped', ($skipped -join ' | ')) }
 $deadline = (Get-Date).AddHours(3)
 try {
     while (-not (Test-Path -LiteralPath $StopFile) -and (Get-Date) -lt $deadline) {
@@ -1171,12 +1177,14 @@ try {
         foreach ($hardware in $computer.Hardware) { $stack.Push($hardware) }
         while ($stack.Count -gt 0) {
             $hardware = $stack.Pop()
-            try { $hardware.Update() } catch { }
+            try { $hardware.Update() } catch { continue }
             foreach ($sub in $hardware.SubHardware) { $stack.Push($sub) }
             foreach ($sensor in $hardware.Sensors) {
-                $value = $null
-                if ($null -ne $sensor.Value) { $value = [math]::Round([double]$sensor.Value, 2) }
-                $sensors.Add([ordered]@{ SensorId = $sensor.Identifier.ToString(); Type = [string]$sensor.SensorType; Text = [string]$sensor.Name; Value = $value })
+                try {
+                    $value = $null
+                    if ($null -ne $sensor.Value) { $value = [math]::Round([double]$sensor.Value, 2) }
+                    $sensors.Add([pscustomobject]@{ SensorId = $sensor.Identifier.ToString(); Type = [string]$sensor.SensorType; Text = [string]$sensor.Name; Value = $value })
+                } catch { }
             }
         }
         $temp = $OutFile + '.tmp'

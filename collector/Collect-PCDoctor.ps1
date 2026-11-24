@@ -288,6 +288,10 @@ if ($Mode -eq 'Capture') {
                     $gpuPrefix = Select-PCDoctorGpuPrefix $first
                     Write-PCDoctorJson -Object @{ sensors = @($first | Select-Object SensorId, Type, Text, Value) } -Path (Join-Path $runDir 'sensors_raw.json')
                     Write-Step 'Sensors: LibreHardwareMonitorLib through PawnIO'
+                    $skippedFile = $lhmReader.OutFile + '.skipped'
+                    if (Test-Path -LiteralPath $skippedFile) {
+                        Write-Step ('  Sensor groups this PC could not open: ' + (Protect-PCDoctorText -Text ([System.IO.File]::ReadAllText($skippedFile)) -MaxLength 300))
+                    }
                 } else {
                     Add-Warning ('The temperature reader gave no sensors ({0}), so there is no CPU temperature in this run.' -f (Get-PCDoctorLhmReaderProblem -Reader $lhmReader))
                     Stop-TemperatureDriver
