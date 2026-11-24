@@ -126,3 +126,8 @@ class Thresholds:
     # --- system
     gpu_driver_old_months: int = 18
     battery_wear_warn_pct: float = 40.0  # capacity lost versus design
+    # A screen counts as running slow when a higher rate is offered that is at
+    # least this many times, and this many Hz, above the current one (so 59 vs
+    # 60 never fires).
+    refresh_gap_ratio: float = 1.2
+    refresh_gap_min_hz: float = 20.0

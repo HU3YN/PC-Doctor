@@ -25,6 +25,7 @@ pub mod privacy;
 pub mod resources;
 pub mod run;
 pub mod sensors;
+pub mod signature;
 pub mod tail;
 pub mod winsensors;
 

@@ -147,6 +147,17 @@ def _specs(
                 "refresh_hz": 144,
             }
         ],
+        "displays": [
+            {
+                "adapter": gpu,
+                "resolution": "2560x1440",
+                "refresh_hz": 144,
+                "max_refresh_hz_at_resolution": 144,
+                "max_refresh_hz": 165,
+                "monitor": "Example 27Q",
+                "monitor_max_refresh_hz": 165,
+            }
+        ],
         "memory": {
             "total_bytes": sticks * stick_gb * GB,
             "slots_total": slots,

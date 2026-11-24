@@ -105,6 +105,84 @@ def test_the_disk_number_names_the_drive(tmp_path):
     assert "does not record disk numbers" in old.summary
 
 
+def with_bus(name: str, number: int, bus: str) -> dict:
+    return {**disk(name, number), "bus_type": bus}
+
+
+def other_crash(time: str) -> list[dict]:
+    records = crash_records(time)
+    records[0]["data"] = {"BugcheckCode": "292", "BugcheckParameter1": "0x0"}  # 0x124
+    return records
+
+
+def test_a_usb_drive_is_named_as_one_with_gentler_advice(tmp_path):
+    usb = run_with(tmp_path / "a", [DISK_RETRY], [with_bus("Backup Drive", 3, "USB")])
+    finding = usb["storage.io_errors"]
+    assert "Disk 3 is the Backup Drive, a USB drive." in finding.summary
+    assert "cable, the port or hub" in finding.summary
+    assert any("another cable" in c for c in finding.next_checks)
+    assert any("another PC" in c for c in finding.next_checks)
+    assert not any("SATA cable" in c for c in finding.next_checks)
+    card = run_with(tmp_path / "b", [DISK_RETRY], [with_bus("Card", 3, "sd")])
+    assert "a memory card" in card["storage.io_errors"].summary
+
+
+def test_internal_drives_keep_the_old_wording(tmp_path):
+    for bus in ("SATA", "NVMe", "RAID", ""):
+        finding = run_with(tmp_path / (bus or "none"), [DISK_RETRY], [with_bus("Drive D", 3, bus)])[
+            "storage.io_errors"
+        ]
+        assert "Disk 3 is the Drive D." in finding.summary
+        assert "USB" not in finding.summary
+        assert any("SATA cable" in c for c in finding.next_checks)
+
+
+def test_a_serious_error_on_a_usb_drive_is_a_warning_but_internal_stays_critical(tmp_path):
+    bad_block = {**DISK_RETRY, "id": 7}
+    usb = run_with(tmp_path / "a", [bad_block], [with_bus("Backup", 3, "USB")])
+    assert usb["storage.io_errors"].severity == "warning"
+    internal = run_with(tmp_path / "b", [bad_block], [with_bus("Drive D", 3, "SATA")])
+    assert internal["storage.io_errors"].severity == "critical"
+
+
+def test_usb_disk_error_then_0x9f_gets_the_power_state_hint(tmp_path):
+    found = run_with(
+        tmp_path,
+        [DISK_RETRY, *crash_records("2026-10-26T00:12:48Z")],
+        [with_bus("Backup Drive", 3, "USB")],
+    )
+    crash = found["stability.bluescreen"]
+    assert "possibly one incident" in crash.summary
+    assert "change power state" in crash.summary
+    assert any("Eject USB drives" in c for c in crash.next_checks)
+    assert any("not a hub" in c for c in crash.next_checks)
+    assert crash.next_checks[0].startswith("Check the disk error")
+
+
+def test_usb_disk_error_then_another_stop_code_has_no_0x9f_hint(tmp_path):
+    found = run_with(
+        tmp_path,
+        [DISK_RETRY, *other_crash("2026-10-26T00:12:48Z")],
+        [with_bus("Backup Drive", 3, "USB")],
+    )
+    crash = found["stability.bluescreen"]
+    assert "possibly one incident" in crash.summary
+    assert "change power state" not in crash.summary
+    assert not any("Eject USB drives" in c for c in crash.next_checks)
+
+
+def test_0x9f_after_an_internal_disk_error_has_no_usb_hint(tmp_path):
+    found = run_with(
+        tmp_path,
+        [DISK_RETRY, *crash_records("2026-10-26T00:12:48Z")],
+        [with_bus("Drive D", 3, "NVMe")],
+    )
+    crash = found["stability.bluescreen"]
+    assert "possibly one incident" in crash.summary
+    assert "change power state" not in crash.summary
+    assert not any("Eject USB drives" in c for c in crash.next_checks)
+
+
 def idle_capture_run(tmp_path, gpu_load: str):
     """The healthy sample capture without frame times and with the given GPU
     load - like the owner's first capture, made with nothing running."""

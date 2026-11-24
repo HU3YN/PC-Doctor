@@ -71,7 +71,14 @@ def collector_info(settings: Config) -> dict[str, Any]:
         # Compare with the release on GitHub, or check its attestation:
         # gh attestation verify PCDoctor-collector.zip --repo HU3YN/PC-Doctor
         "sha256": hashlib.sha256(zipped).hexdigest() if folder else None,
+        # True when the pinned PresentMon is inside that zip (frame times work
+        # straight away); otherwise the collector fetches it on the PC.
         "includes_presentmon": bool(folder and collector_build.trusted_tools(folder)),
+        # True when PawnIO's installer and LibreHardwareMonitorLib with its
+        # libraries are inside, all pinned (CPU temperature needs no download).
+        "includes_temperature_tools": bool(
+            folder and collector_build.trusted_temperature_tools(folder)
+        ),
         "lan_addresses": lan_addresses(),
         "photo_reading": photo_service.available(),
     }
@@ -88,6 +95,9 @@ def _zip_response(data: bytes, filename: str) -> Response:
 @router.get("/collector.zip")
 def collector_zip(settings: Config) -> Response:
     """The collector as one zip: unpack it onto a USB stick and double-click PCDoctor.cmd.
+    Intel's PresentMon is inside (tools/) when this server has the pinned file,
+    and so are PawnIO's installer and LibreHardwareMonitorLib (tools/lhm/) when
+    it has every pinned temperature file.
 
     Built reproducibly (services/collector_build.py): the same commit gives the
     same bytes as the attested GitHub release."""
@@ -95,17 +105,6 @@ def collector_zip(settings: Config) -> Response:
     if folder is None:
         raise HTTPException(status_code=404, detail="The collector is not on this server.")
     return _zip_response(collector_build.collector_zip(folder), "PCDoctor-collector.zip")
-
-
-@router.get("/collector/presentmon.zip")
-def presentmon_zip(settings: Config) -> Response:
-    """Intel's PresentMon, if it was fetched on this computer and is the pinned
-    file. Unpacks into the collector's folder (tools/)."""
-    folder = collector_dir(settings)
-    data = collector_build.presentmon_zip(folder) if folder else None
-    if data is None:
-        raise HTTPException(status_code=404, detail="PresentMon is not on this server.")
-    return _zip_response(data, "PCDoctor-collector-PresentMon.zip")
 
 
 @router.get("/noboot")

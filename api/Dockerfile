@@ -24,7 +24,14 @@ RUN pip install --require-hashes -r api/requirements.lock \
 
 # The Windows collector, offered for download from the dashboard.
 COPY collector/PCDoctor.cmd collector/Collect-PCDoctor.ps1 collector/PCDoctorCollector.psm1 \
-     collector/Get-Tools.ps1 collector/README.md collector/
+     collector/Get-Tools.ps1 collector/README.md collector/PresentMon-LICENSE.txt \
+     collector/temperature-tools.json collector/
+COPY collector/licences collector/licences
+# Intel's PresentMon, PawnIO's installer and LibreHardwareMonitorLib go inside
+# that download, so the zip this server offers is the same file as the release
+# for this commit. They are not in git: fetch the versions Get-Tools.ps1 and
+# temperature-tools.json pin. The build fails unless every SHA-256 is the pinned one.
+RUN python api/pcdoctor_api/services/collector_build.py fetch-tools collector
 ENV PCDOCTOR_COLLECTOR_DIR=/app/collector
 
 # Run as an ordinary user; /data holds the uploaded runs.

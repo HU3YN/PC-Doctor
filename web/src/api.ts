@@ -211,6 +211,7 @@ export interface CollectorInfo {
   available: boolean;
   sha256: string | null;
   includes_presentmon: boolean;
+  includes_temperature_tools: boolean;
   lan_addresses: string[];
   photo_reading: boolean;
 }

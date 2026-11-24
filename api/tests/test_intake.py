@@ -162,43 +162,210 @@ def test_a_bezel_or_a_tilt_does_not_hide_the_stop_code(border, tilt):
     assert "CRITICAL_PROCESS_DIED" in str(found), text
 
 
-def test_only_the_pinned_presentmon_is_shipped_with_the_collector(client, monkeypatch, tmp_path):
+def collector_copy(tmp_path, pinned_file: bytes | None = None):
+    """A copy of the real collector folder, without tools/. With pinned_file,
+    its Get-Tools.ps1 pins that file's SHA-256 instead of the real PresentMon's,
+    so tests can stand in a small fake for Intel's program."""
     import hashlib
     import re
     import shutil
     from pathlib import Path
 
-    from pcdoctor_api.config import get_settings
-
     source = Path(__file__).resolve().parents[2] / "collector"
     folder = tmp_path / "collector"
-    shutil.copytree(source, folder, ignore=shutil.ignore_patterns("tools", "runs"))
-    good = b"the file Get-Tools.ps1 pins"
-    script = folder / "Get-Tools.ps1"
-    text = script.read_text(encoding="utf-8")
-    pinned = hashlib.sha256(good).hexdigest().upper()
-    script.write_text(
-        re.sub(r"\$Sha256 = '[0-9A-F]{64}'", f"$Sha256 = '{pinned}'", text),
-        encoding="utf-8",
-    )
+    shutil.copytree(source, folder, ignore=shutil.ignore_patterns("tools", "runs", "tests"))
+    if pinned_file is not None:
+        script = folder / "Get-Tools.ps1"
+        text, changed = re.subn(
+            r"\$Sha256 = '[0-9A-F]{64}'",
+            f"$Sha256 = '{hashlib.sha256(pinned_file).hexdigest().upper()}'",
+            script.read_text(encoding="utf-8"),
+        )
+        assert changed == 1
+        script.write_text(text, encoding="utf-8")
+    return folder
+
+
+PINNED = b"the file Get-Tools.ps1 pins"
+PRESENTMON = "PresentMon-2.6.0-x64.exe"
+
+
+def test_only_the_pinned_presentmon_is_shipped_with_the_collector(client, monkeypatch, tmp_path):
+    from pcdoctor_api.config import get_settings
+
+    folder = collector_copy(tmp_path, PINNED)
     (folder / "tools").mkdir()
-    (folder / "tools" / "PresentMon-2.6.0-x64.exe").write_bytes(good)
+    (folder / "tools" / PRESENTMON).write_bytes(PINNED)
     (folder / "tools" / "PresentMon-9.9.9-x64.exe").write_bytes(b"planted")
+    # The right bytes under another name stay behind too: one commit, one zip.
+    (folder / "tools" / "PresentMon-copy.exe").write_bytes(PINNED)
+    (folder / "tools" / "notes.txt").write_bytes(b"left by someone")
     monkeypatch.setenv("PCDOCTOR_COLLECTOR_DIR", str(folder))
     get_settings.cache_clear()
 
-    # PresentMon is never in the main zip (it must match the attested release)...
+    # One download has everything: the scripts, PresentMon, and Intel's licence.
+    with zipfile.ZipFile(io.BytesIO(client.get("/api/collector.zip").content)) as archive:
+        names = archive.namelist()
+        assert [n for n in names if "/tools/" in n] == [f"PCDoctor-collector/tools/{PRESENTMON}"]
+        assert archive.read(f"PCDoctor-collector/tools/{PRESENTMON}") == PINNED
+        assert "PCDoctor-collector/PCDoctor.cmd" in names
+        licence = archive.read("PCDoctor-collector/PresentMon-LICENSE.txt").decode()
+        assert "Intel Corporation" in licence
+        assert "Permission is hereby granted, free of charge" in licence
+    assert client.get("/api/collector").json()["includes_presentmon"] is True
+    # The separate PresentMon download is gone.
+    assert client.get("/api/collector/presentmon.zip").status_code == 404
+
+    # A swapped file is never packed, and the page is told so.
+    (folder / "tools" / PRESENTMON).write_bytes(b"swapped")
     with zipfile.ZipFile(io.BytesIO(client.get("/api/collector.zip").content)) as archive:
         assert not [n for n in archive.namelist() if "/tools/" in n]
-    # ...but in its own download, and only the pinned file.
-    response = client.get("/api/collector/presentmon.zip")
-    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
-        assert archive.namelist() == ["PCDoctor-collector/tools/PresentMon-2.6.0-x64.exe"]
-    assert client.get("/api/collector").json()["includes_presentmon"] is True
-
-    (folder / "tools" / "PresentMon-2.6.0-x64.exe").write_bytes(b"swapped")
-    assert client.get("/api/collector/presentmon.zip").status_code == 404
+        assert "PCDoctor-collector/PresentMon-LICENSE.txt" in archive.namelist()
     assert client.get("/api/collector").json()["includes_presentmon"] is False
+
+
+def test_the_zip_with_presentmon_is_the_same_bytes_every_time(tmp_path):
+    import os
+    import shutil
+
+    from pcdoctor_api.services import collector_build
+
+    folder = collector_copy(tmp_path, PINNED)
+    without = collector_build.collector_zip(folder)
+    (folder / "tools").mkdir()
+    (folder / "tools" / PRESENTMON).write_bytes(PINNED)
+    first = collector_build.collector_zip(folder)
+    assert first != without
+    # Neither the file's date nor where the folder is changes the bytes.
+    os.utime(folder / "tools" / PRESENTMON, (1_000_000_000, 1_000_000_000))
+    moved = tmp_path / "elsewhere"
+    shutil.copytree(folder, moved)
+    assert collector_build.collector_zip(folder) == first
+    assert collector_build.collector_zip(moved) == first
+    with zipfile.ZipFile(io.BytesIO(first)) as archive:
+        entry = archive.getinfo(f"PCDoctor-collector/tools/{PRESENTMON}")
+        assert entry.date_time == collector_build.FIXED_TIME
+        # PresentMon comes after the scripts, in a fixed place.
+        assert archive.namelist()[-1] == entry.filename
+
+
+def test_a_release_build_refuses_to_go_out_without_presentmon(tmp_path, capsys):
+    from pcdoctor_api.services import collector_build
+
+    folder = collector_copy(tmp_path, PINNED)
+    out = tmp_path / "dist" / "PCDoctor-collector.zip"
+    assert collector_build.main(["build", "--require-presentmon", str(folder), str(out)]) == 1
+    assert not out.exists()
+    assert "fetch-presentmon" in capsys.readouterr().err
+    # A file that is not the pinned one does not count.
+    (folder / "tools").mkdir()
+    (folder / "tools" / PRESENTMON).write_bytes(b"swapped")
+    assert collector_build.main(["build", str(folder), str(out), "--require-presentmon"]) == 1
+    assert not out.exists()
+    # Without the flag the scripts-only zip still builds.
+    assert collector_build.main(["build", str(folder), str(out)]) == 0
+    out.unlink()
+
+    (folder / "tools" / PRESENTMON).write_bytes(PINNED)
+    assert collector_build.main(["build", "--require-presentmon", str(folder), str(out)]) == 0
+    assert out.read_bytes() == collector_build.collector_zip(folder)
+    with zipfile.ZipFile(out) as archive:
+        assert f"PCDoctor-collector/tools/{PRESENTMON}" in archive.namelist()
+    # Intel's licence has to travel with their program.
+    (folder / "PresentMon-LICENSE.txt").unlink()
+    assert collector_build.main(["build", "--require-presentmon", str(folder), str(out)]) == 1
+
+    assert collector_build.main(["build"]) == 2
+    assert collector_build.main(["build", "--no-such-flag", str(folder), str(out)]) == 2
+    assert collector_build.main(["build", str(tmp_path / "nowhere"), str(out)]) == 2
+
+
+def test_fetching_presentmon_keeps_only_the_pinned_file(tmp_path, monkeypatch, capsys):
+    from pcdoctor_api.services import collector_build
+
+    folder = collector_copy(tmp_path, PINNED)
+    target = folder / "tools" / PRESENTMON
+    asked: list[str] = []
+
+    def download(body: bytes):
+        def fake(url: str, limit: int) -> bytes:
+            asked.append(url)
+            return body
+
+        return fake
+
+    # The wrong bytes: an error, and nothing is left behind.
+    monkeypatch.setattr(collector_build, "_download", download(b"something else"))
+    assert collector_build.main(["build", "fetch-presentmon", str(folder)]) == 1
+    assert "not the pinned PresentMon" in capsys.readouterr().err
+    assert list((folder / "tools").iterdir()) == []
+    assert asked == [
+        "https://github.com/GameTechDev/PresentMon/releases/download/v2.6.0/" + PRESENTMON
+    ]
+
+    # The pinned bytes are saved under the name the collector looks for.
+    monkeypatch.setattr(collector_build, "_download", download(PINNED))
+    assert collector_build.main(["build", "fetch-presentmon", str(folder)]) == 0
+    assert target.read_bytes() == PINNED
+    assert [path.name for path in (folder / "tools").iterdir()] == [PRESENTMON]
+    assert collector_build.trusted_tools(folder) == [target]
+
+    # Already there and correct: no download at all.
+    def must_not_run(url: str, limit: int) -> bytes:
+        raise AssertionError("downloaded again")
+
+    monkeypatch.setattr(collector_build, "_download", must_not_run)
+    assert collector_build.main(["build", "fetch-presentmon", str(folder)]) == 0
+
+    # A swapped file is replaced by the pinned one.
+    target.write_bytes(b"swapped")
+    monkeypatch.setattr(collector_build, "_download", download(PINNED))
+    assert collector_build.fetch_presentmon(folder) == target
+    assert target.read_bytes() == PINNED
+
+    assert collector_build.main(["build", "fetch-presentmon"]) == 2
+    assert collector_build.main(["build", "fetch-presentmon", str(tmp_path / "nowhere")]) == 2
+
+
+def test_fetching_presentmon_needs_a_pin_and_https(tmp_path, monkeypatch):
+    import urllib.request
+
+    from pcdoctor_api.services import collector_build
+
+    folder = collector_copy(tmp_path, PINNED)
+
+    # Plain http is refused before anything is sent...
+    def no_network(*args, **kwargs):
+        raise AssertionError("opened a connection")
+
+    monkeypatch.setattr(urllib.request.OpenerDirector, "open", no_network)
+    with pytest.raises(collector_build.FetchError, match="https"):
+        collector_build._download("http://example.com/PresentMon.exe", 10)
+    # ...and so is a redirect from https to anything else.
+    with pytest.raises(collector_build.FetchError, match="redirect"):
+        collector_build._HttpsOnly().redirect_request(
+            urllib.request.Request("https://example.com/a"), None, 302, "Found", {}, "http://x/a"
+        )
+
+    # A reply bigger than the cap is not PresentMon.
+    class Reply(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(urllib.request.OpenerDirector, "open", lambda *a, **k: Reply(b"x" * 11))
+    with pytest.raises(collector_build.FetchError, match="larger"):
+        collector_build._download("https://example.com/PresentMon.exe", 10)
+    assert collector_build._download("https://example.com/PresentMon.exe", 11) == b"x" * 11
+
+    # Without a pinned hash there is nothing to check a download against.
+    (folder / "Get-Tools.ps1").write_text("[string]$Version = '2.6.0'\n", encoding="utf-8")
+    monkeypatch.setattr(collector_build, "_download", no_network)
+    with pytest.raises(collector_build.FetchError, match="pin"):
+        collector_build.fetch_presentmon(folder)
+    assert collector_build.trusted_tools(folder) == []
 
 
 def test_the_collector_zip_is_the_same_bytes_every_time(client, tmp_path):
@@ -216,7 +383,7 @@ def test_the_collector_zip_is_the_same_bytes_every_time(client, tmp_path):
     assert client.get("/api/collector").json()["sha256"] == hashlib.sha256(first).hexdigest()
     # The same files with Windows line endings (a checkout on Windows) give the same bytes.
     crlf = tmp_path / "crlf"
-    shutil.copytree(source, crlf, ignore=shutil.ignore_patterns("tools", "runs", "tests"))
+    shutil.copytree(source, crlf, ignore=shutil.ignore_patterns("runs", "tests"))
     for path in crlf.iterdir():
         if path.is_file():
             path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))

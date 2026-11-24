@@ -221,6 +221,174 @@ function ConvertTo-PCDoctorMemoryModule {
     }
 }
 
+# The display modes Windows offers, read through user32's EnumDisplaySettings:
+# a 360 Hz monitor left at 60 Hz shows up as "current 59, offered 360". Only
+# mode numbers and the adapter's name are read. C#, because a screen has
+# hundreds of modes and a PowerShell loop over P/Invoke is slow.
+$script:DisplayModeSource = @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
+public static class PCDoctorDisplayModes {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct DISPLAY_DEVICE {
+        public int cb;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceString;
+        public int StateFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceID;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceKey;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct DEVMODE {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+        public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+        public int dmFields;
+        public int dmPositionX, dmPositionY, dmDisplayOrientation, dmDisplayFixedOutput;
+        public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+        public short dmLogPixels;
+        public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
+        public int dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2;
+        public int dmPanningWidth, dmPanningHeight;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern bool EnumDisplayDevicesW(string device, uint index, ref DISPLAY_DEVICE info, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern bool EnumDisplaySettingsW(string device, int mode, ref DEVMODE info);
+
+    const int ENUM_CURRENT_SETTINGS = -1;
+    const int ATTACHED_TO_DESKTOP = 0x1;
+    const int MIRRORING_DRIVER = 0x8;
+    const uint GET_DEVICE_INTERFACE_NAME = 0x1;
+
+    public class Display {
+        public string Adapter;
+        public int Width, Height, Refresh, MaxAtResolution, Max;
+        public string MonitorInterface;   // matches the monitor's WMI instance; not stored
+    }
+
+    static DISPLAY_DEVICE NewDevice() { var d = new DISPLAY_DEVICE(); d.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE)); return d; }
+    static DEVMODE NewMode() { var m = new DEVMODE(); m.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE)); return m; }
+
+    public static List<Display> Read() {
+        var result = new List<Display>();
+        for (uint i = 0; i < 32; i++) {
+            var adapter = NewDevice();
+            if (!EnumDisplayDevicesW(null, i, ref adapter, 0)) break;
+            if ((adapter.StateFlags & ATTACHED_TO_DESKTOP) == 0 || (adapter.StateFlags & MIRRORING_DRIVER) != 0) continue;
+            var current = NewMode();
+            if (!EnumDisplaySettingsW(adapter.DeviceName, ENUM_CURRENT_SETTINGS, ref current)) continue;
+            var display = new Display();
+            display.Adapter = adapter.DeviceString;
+            display.Width = current.dmPelsWidth;
+            display.Height = current.dmPelsHeight;
+            display.Refresh = current.dmDisplayFrequency;
+            for (int n = 0; n < 4096; n++) {
+                var mode = NewMode();
+                if (!EnumDisplaySettingsW(adapter.DeviceName, n, ref mode)) break;
+                if (mode.dmDisplayFrequency <= 1) continue;   // 0 and 1 mean "the hardware's default"
+                if (mode.dmDisplayFrequency > display.Max) display.Max = mode.dmDisplayFrequency;
+                if (mode.dmPelsWidth == current.dmPelsWidth && mode.dmPelsHeight == current.dmPelsHeight &&
+                    mode.dmDisplayFrequency > display.MaxAtResolution) display.MaxAtResolution = mode.dmDisplayFrequency;
+            }
+            var monitor = NewDevice();
+            if (EnumDisplayDevicesW(adapter.DeviceName, 0, ref monitor, GET_DEVICE_INTERFACE_NAME)) display.MonitorInterface = monitor.DeviceID;
+            result.Add(display);
+        }
+        return result;
+    }
+}
+'@
+
+function ConvertTo-PCDoctorMonitorKey {
+    # A monitor's device interface name and its WMI instance name, brought to
+    # one form so the two can be matched:
+    #   \\?\DISPLAY#GSM5B7F#5&2b8f1c7&0&UID4352#{e6f07b5f-...}  -> DISPLAY\GSM5B7F\5&2B8F1C7&0&UID4352
+    #   DISPLAY\GSM5B7F\5&2b8f1c7&0&UID4352_0                   -> DISPLAY\GSM5B7F\5&2B8F1C7&0&UID4352
+    param([string]$Name)
+    if (-not $Name) { return $null }
+    $key = $Name.Trim()
+    if ($key -match '^\\\\\?\\(.+?)#\{[0-9A-Fa-f-]+\}$') { $key = $Matches[1] -replace '#', '\' }
+    $key = $key -replace '_\d+$', ''
+    return $key.ToUpperInvariant()
+}
+
+function ConvertFrom-PCDoctorWmiString {
+    # WMI gives a monitor's EDID strings as arrays of character codes, padded with zeros.
+    param($Codes)
+    if ($null -eq $Codes) { return $null }
+    $chars = foreach ($code in @($Codes)) { if ([int]$code -gt 0) { [char][int]$code } }
+    return Get-PCDoctorTrimmed (-join $chars)
+}
+
+function Get-PCDoctorMonitors {
+    # Each monitor's model name and the highest refresh rate its EDID lists,
+    # keyed by ConvertTo-PCDoctorMonitorKey. The serial number in the EDID is
+    # never read.
+    $monitors = @{}
+    foreach ($id in (Get-PCDoctorCim -Namespace 'root/wmi' -ClassName 'WmiMonitorID')) {
+        $key = ConvertTo-PCDoctorMonitorKey $id.InstanceName
+        if (-not $key) { continue }
+        $monitors[$key] = [ordered]@{ name = (Protect-PCDoctorText -Text (ConvertFrom-PCDoctorWmiString $id.UserFriendlyName) -MaxLength 64); max_refresh_hz = $null }
+    }
+    foreach ($modes in (Get-PCDoctorCim -Namespace 'root/wmi' -ClassName 'WmiMonitorListedSupportedSourceModes')) {
+        $key = ConvertTo-PCDoctorMonitorKey $modes.InstanceName
+        if (-not $key) { continue }
+        $best = $null
+        foreach ($mode in @($modes.MonitorSourceModes)) {
+            if ($mode.VerticalRefreshRateDenominator -gt 0) {
+                $hz = [math]::Round([double]$mode.VerticalRefreshRateNumerator / [double]$mode.VerticalRefreshRateDenominator)
+                if ($null -eq $best -or $hz -gt $best) { $best = $hz }
+            }
+        }
+        if (-not $monitors.ContainsKey($key)) { $monitors[$key] = [ordered]@{ name = $null; max_refresh_hz = $null } }
+        $monitors[$key].max_refresh_hz = $best
+    }
+    return $monitors
+}
+
+function ConvertTo-PCDoctorDisplays {
+    # Screens (from EnumDisplaySettings) joined with their monitors (from WMI).
+    # With one screen and one monitor they belong together even when the two
+    # names cannot be matched.
+    param([object[]]$Screens, [hashtable]$Monitors)
+    $result = @()
+    $screenList = @($Screens | Where-Object { $_ })
+    foreach ($screen in $screenList) {
+        $monitor = $null
+        $key = ConvertTo-PCDoctorMonitorKey $screen.MonitorInterface
+        if ($key -and $Monitors -and $Monitors.ContainsKey($key)) { $monitor = $Monitors[$key] }
+        elseif ($screenList.Count -eq 1 -and $Monitors -and $Monitors.Count -eq 1) { $monitor = @($Monitors.Values)[0] }
+        $result += [ordered]@{
+            adapter                      = Get-PCDoctorTrimmed $screen.Adapter
+            resolution                   = $(if ($screen.Width -gt 0 -and $screen.Height -gt 0) { '{0}x{1}' -f $screen.Width, $screen.Height })
+            refresh_hz                   = $(if ($screen.Refresh -gt 1) { [int]$screen.Refresh })
+            max_refresh_hz_at_resolution = $(if ($screen.MaxAtResolution -gt 1) { [int]$screen.MaxAtResolution })
+            max_refresh_hz               = $(if ($screen.Max -gt 1) { [int]$screen.Max })
+            monitor                      = $(if ($monitor) { $monitor.name })
+            monitor_max_refresh_hz       = $(if ($monitor -and $null -ne $monitor.max_refresh_hz) { [int]$monitor.max_refresh_hz })
+        }
+    }
+    # Unrolled on purpose: callers wrap the answer in @(), which keeps an empty
+    # or one-screen answer a list.
+    return $result
+}
+
+function Get-PCDoctorDisplays {
+    # Every screen attached to the desktop: what it runs at, and the most
+    # Windows and the monitor offer. Empty when Windows answers nothing.
+    $screens = @()
+    try {
+        if (-not ('PCDoctorDisplayModes' -as [type])) { Add-Type -TypeDefinition $script:DisplayModeSource -ErrorAction Stop }
+        $screens = @([PCDoctorDisplayModes]::Read())
+    } catch { return @() }
+    return (ConvertTo-PCDoctorDisplays -Screens $screens -Monitors (Get-PCDoctorMonitors))
+}
+
 function Get-PCDoctorSpecs {
     # The parts in the PC and the Windows version. Deliberately NOT collected:
     # computer name, user names, serial numbers, MAC or IP addresses.
@@ -304,6 +472,7 @@ function Get-PCDoctorSpecs {
         system          = $systemInfo
         cpu             = @($cpus)
         gpu             = @($gpus)
+        displays        = @(Get-PCDoctorDisplays)
         memory          = [ordered]@{
             total_bytes = $totalMemory
             slots_total = $(if ($slots -gt 0) { $slots } else { $null })
@@ -779,6 +948,43 @@ function Get-PCDoctorWindowsSample {
     return $sample
 }
 
+function Test-PCDoctorUnderLoad {
+    # Is a game or stress test running? Asked before a capture starts, so an
+    # idle PC is noticed in the first seconds and not after five minutes.
+    # A game loads the GPU; a CPU stress test loads only the CPU, so either
+    # counts. The limits sit well above the analyzer's "idle" line (median GPU
+    # load under 15%) so a run that passes here is not called idle later.
+    # Busy is $null when the PC gave no load reading at all: then nothing is
+    # known and the capture should simply go ahead.
+    param([object[]]$Samples, [double]$GpuLoadPct = 30.0, [double]$CpuLoadPct = 50.0)
+    $medians = @{}
+    foreach ($column in @('gpu_load_pct', 'cpu_load_pct')) {
+        $values = @(foreach ($sample in @($Samples)) {
+                if ($sample -and $null -ne $sample[$column]) { [double]$sample[$column] }
+            }) | Sort-Object
+        $values = @($values)
+        if ($values.Count -eq 0) { $medians[$column] = $null; continue }
+        $middle = [int][math]::Floor($values.Count / 2)
+        if ($values.Count % 2) { $medians[$column] = $values[$middle] }
+        else { $medians[$column] = ($values[$middle - 1] + $values[$middle]) / 2.0 }
+    }
+    $busy = $null
+    if ($null -ne $medians['gpu_load_pct'] -or $null -ne $medians['cpu_load_pct']) {
+        $busy = (($null -ne $medians['gpu_load_pct'] -and $medians['gpu_load_pct'] -ge $GpuLoadPct) -or
+            ($null -ne $medians['cpu_load_pct'] -and $medians['cpu_load_pct'] -ge $CpuLoadPct))
+    }
+    return [ordered]@{ busy = $busy; gpu_load_pct = $medians['gpu_load_pct']; cpu_load_pct = $medians['cpu_load_pct'] }
+}
+
+function Format-PCDoctorLoad {
+    # "GPU 3%, CPU 7%" for the messages about an idle PC.
+    param($Verdict)
+    $parts = @()
+    if ($null -ne $Verdict.gpu_load_pct) { $parts += ('GPU {0:0}%' -f $Verdict.gpu_load_pct) }
+    if ($null -ne $Verdict.cpu_load_pct) { $parts += ('CPU {0:0}%' -f $Verdict.cpu_load_pct) }
+    return ($parts -join ', ')
+}
+
 function Format-PCDoctorSensorRow {
     # One CSV line: elapsed seconds, then the columns in their fixed order.
     # Always a dot for decimals, whatever the Windows region settings are.
@@ -794,6 +1000,258 @@ function Format-PCDoctorSensorRow {
 }
 
 function Get-PCDoctorSensorHeader { 'elapsed_s,' + ($script:SensorColumns -join ',') }
+
+# ------------------------------------------------- CPU temperature driver
+# Windows offers no CPU temperature to a plain program. With the owner's
+# agreement (docs/plan.md, 2026-11-17) the collector may, during a capture and
+# only after asking, install PawnIO - a hardware-access driver signed by
+# Microsoft's hardware program - read temperatures with LibreHardwareMonitorLib,
+# and remove the driver again when the capture ends. This is the one thing the
+# collector ever installs. Every file is checked against temperature-tools.json.
+
+$script:PawnIOUninstallKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO'
+$script:PawnIOMarker = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'PCDoctor\pawnio-installed-by-pcdoctor.txt'
+
+function Test-PCDoctorFileHash {
+    param([string]$Path, [string]$Sha256)
+    if (-not $Path -or -not $Sha256 -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    try { return ((Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash -eq $Sha256.ToUpperInvariant()) } catch { return $false }
+}
+
+function Get-PCDoctorTemperatureTools {
+    # The pinned PawnIO installer and LibreHardwareMonitorLib files next to the
+    # collector. $null when any of them is missing or not the pinned file -
+    # then none of them is used. Problem is set when the files are there but
+    # the installer's signature is wrong.
+    param(
+        [string]$CollectorDir,
+        [scriptblock]$IsTrusted = { param($file, $publisher) Test-PCDoctorSignedBy -Path $file -Publisher $publisher }
+    )
+    $pinFile = Join-Path $CollectorDir 'temperature-tools.json'
+    if (-not (Test-Path -LiteralPath $pinFile)) { return $null }
+    try { $pins = Get-Content -LiteralPath $pinFile -Raw | ConvertFrom-Json } catch { return $null }
+    if (-not $pins.pawnio -or -not $pins.libraries) { return $null }
+    $tools = Join-Path $CollectorDir 'tools'
+    $installer = Join-Path $tools ([string]$pins.pawnio.file)
+    if (-not (Test-PCDoctorFileHash -Path $installer -Sha256 ([string]$pins.pawnio.sha256))) { return $null }
+    $libDir = Join-Path $tools 'lhm'
+    foreach ($library in @($pins.libraries)) {
+        $name = (([string]$library.dll) -split '/')[-1]
+        if (-not (Test-PCDoctorFileHash -Path (Join-Path $libDir $name) -Sha256 ([string]$library.dll_sha256))) { return $null }
+    }
+    $result = [ordered]@{ Installer = $installer; LibraryDir = $libDir; Version = [string]$pins.pawnio.version; Problem = $null }
+    if (-not (& $IsTrusted $installer ([string]$pins.pawnio.signer))) {
+        $result.Problem = "The PawnIO installer does not carry a valid signature from $($pins.pawnio.signer), so it was not used and there is no CPU temperature in this run."
+    }
+    return $result
+}
+
+function Test-PCDoctorPawnIOInstalled { Test-Path -LiteralPath $script:PawnIOUninstallKey }
+
+function Get-PCDoctorPawnIOInf {
+    # The published name (oemNN.inf) of PawnIO's driver package, for removal.
+    $driver = @(Get-PCDoctorCim -ClassName 'Win32_PnPSignedDriver' -Filter "DeviceName = 'PawnIO'") | Select-Object -First 1
+    if ($driver -and ([string]$driver.InfName) -match '^oem\d+\.inf$') { return [string]$driver.InfName }
+    return $null
+}
+
+function Get-PCDoctorPawnIOLeftovers {
+    # What of PawnIO is still on this PC. Locale-independent checks only:
+    # registry, folders, the service and the device.
+    $left = [ordered]@{
+        registered    = (Test-PCDoctorPawnIOInstalled)
+        folder        = (Test-Path -LiteralPath (Join-Path $env:ProgramFiles 'PawnIO'))
+        service       = [bool](Get-Service -Name 'PawnIO' -ErrorAction SilentlyContinue)
+        driver_store  = [bool](Get-ChildItem -LiteralPath (Join-Path $env:SystemRoot 'System32\DriverStore\FileRepository') -Directory -Filter 'pawnio.inf_*' -ErrorAction SilentlyContinue)
+        device        = $false
+    }
+    try { $left.device = [bool](Get-PnpDevice -InstanceId 'ROOT\PAWNIO\0000' -ErrorAction Stop) } catch { }
+    $left.clean = -not ($left.registered -or $left.folder -or $left.service -or $left.driver_store -or $left.device)
+    return $left
+}
+
+function Install-PCDoctorPawnIO {
+    # Installs PawnIO silently and notes that PC Doctor did it, so a later run
+    # can remove it if this one is cut short. Returns the driver package name
+    # (needed for removal) or $null when the install failed.
+    param([string]$Installer)
+    try {
+        $process = Start-Process -FilePath $Installer -ArgumentList '-install', '-silent' -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
+    } catch { return $null }
+    if (-not (Test-PCDoctorPawnIOInstalled)) { return $null }
+    $inf = Get-PCDoctorPawnIOInf
+    try {
+        New-Item -ItemType Directory -Path (Split-Path -Parent $script:PawnIOMarker) -Force | Out-Null
+        [System.IO.File]::WriteAllText($script:PawnIOMarker, ("installed {0} by the PC Doctor collector; package {1}; exit code {2}" -f (Get-Date).ToString('s'), $inf, $process.ExitCode))
+    } catch { }
+    if ($inf) { return $inf }
+    return 'unknown'
+}
+
+function Uninstall-PCDoctorPawnIO {
+    # PawnIO's own uninstaller, then what it was seen to leave behind on
+    # Windows Server 2025 (2026-11-24): the device, the driver package in the
+    # driver store and a stopped service. Returns what is left.
+    param([string]$Installer, [string]$Inf)
+    if (-not $Inf -or $Inf -eq 'unknown') { $Inf = Get-PCDoctorPawnIOInf }
+    if ($Installer -and (Test-Path -LiteralPath $Installer)) {
+        try { Start-Process -FilePath $Installer -ArgumentList '-uninstall', '-silent' -Wait -WindowStyle Hidden -ErrorAction Stop } catch { }
+    } elseif (Test-PCDoctorPawnIOInstalled) {
+        $folder = [string](Get-ItemProperty -LiteralPath $script:PawnIOUninstallKey -Name InstallLocation -ErrorAction SilentlyContinue).InstallLocation
+        $uninstaller = $(if ($folder) { Join-Path $folder 'uninstall.exe' })
+        if ($uninstaller -and (Test-Path -LiteralPath $uninstaller) -and (Test-PCDoctorSignedBy -Path $uninstaller -Publisher 'namazso')) {
+            try { Start-Process -FilePath $uninstaller -ArgumentList '-uninstall', '-silent' -Wait -WindowStyle Hidden -ErrorAction Stop } catch { }
+        }
+    }
+    Start-Sleep -Seconds 2
+    $pnputil = Join-Path $env:SystemRoot 'System32\pnputil.exe'
+    try { if (Get-PnpDevice -InstanceId 'ROOT\PAWNIO\0000' -ErrorAction Stop) { & $pnputil /remove-device 'ROOT\PAWNIO\0000' | Out-Null } } catch { }
+    if ($Inf -match '^oem\d+\.inf$') { & $pnputil /delete-driver $Inf /uninstall /force | Out-Null }
+    if (Get-Service -Name 'PawnIO' -ErrorAction SilentlyContinue) {
+        & (Join-Path $env:SystemRoot 'System32\sc.exe') stop PawnIO | Out-Null
+        & (Join-Path $env:SystemRoot 'System32\sc.exe') delete PawnIO | Out-Null
+    }
+    Start-Sleep -Seconds 1
+    $left = Get-PCDoctorPawnIOLeftovers
+    if ($left.clean) { Remove-Item -LiteralPath $script:PawnIOMarker -Force -ErrorAction SilentlyContinue }
+    return $left
+}
+
+function Test-PCDoctorPawnIOLeftBehind {
+    # A capture cut short (the window closed) leaves the driver PC Doctor
+    # installed. True when the marker says so and PawnIO is still there.
+    return ((Test-Path -LiteralPath $script:PawnIOMarker) -and -not (Get-PCDoctorPawnIOLeftovers).clean)
+}
+
+# LibreHardwareMonitorLib runs in its own Windows PowerShell 5.1 process: its
+# libraries are built for .NET Framework, and the driver handle it holds is
+# closed for certain when that process ends, before the driver is removed. It
+# writes every sensor, once a second, in the shape of LibreHardwareMonitor's
+# web server, so ConvertTo-PCDoctorSample reads it unchanged.
+$script:LhmReaderScript = @'
+param([string]$LibDir, [string]$OutFile, [string]$StopFile, [int]$ParentId)
+$ErrorActionPreference = 'Stop'
+trap {
+    # Why the reader stopped, for the collector's log.
+    $text = $_.Exception.GetType().FullName + ': ' + $_.Exception.Message
+    $inner = $_.Exception.InnerException
+    while ($inner) { $text += ' <- ' + $inner.GetType().FullName + ': ' + $inner.Message; $inner = $inner.InnerException }
+    if ($_.Exception -is [System.Reflection.ReflectionTypeLoadException]) {
+        $text += ' | ' + (($_.Exception.LoaderExceptions | ForEach-Object { $_.Message } | Select-Object -Unique -First 3) -join ' | ')
+    }
+    if ($_.InvocationInfo) { $text += ' (line ' + $_.InvocationInfo.ScriptLineNumber + ': ' + $_.InvocationInfo.Line.Trim() + ')' }
+    [System.IO.File]::WriteAllText($OutFile + '.error', $text)
+    exit 1
+}
+Add-Type -TypeDefinition @"
+using System; using System.IO; using System.Reflection;
+public static class PCDoctorLhmResolver {
+    public static string Dir;
+    public static void Enable() {
+        AppDomain.CurrentDomain.AssemblyResolve += delegate(object sender, ResolveEventArgs e) {
+            string file = Path.Combine(Dir, new AssemblyName(e.Name).Name + ".dll");
+            return File.Exists(file) ? Assembly.LoadFrom(file) : null;
+        };
+    }
+}
+"@
+[PCDoctorLhmResolver]::Dir = $LibDir
+[PCDoctorLhmResolver]::Enable()
+Add-Type -Path (Join-Path $LibDir 'LibreHardwareMonitorLib.dll')
+$computer = New-Object LibreHardwareMonitor.Hardware.Computer
+$computer.IsCpuEnabled = $true
+$computer.Open()
+# The CPU first, then each other group on its own: one that fails on this
+# hardware (seen on GitHub's VM, 2026-11-24) must not cost the CPU reading.
+$skipped = @()
+foreach ($group in @('IsGpuEnabled', 'IsMemoryEnabled')) {
+    try { $computer.$group = $true } catch { $skipped += $group + ': ' + $_.Exception.Message }
+}
+if ($skipped) { [System.IO.File]::WriteAllText($OutFile + '.skipped', ($skipped -join ' | ')) }
+$deadline = (Get-Date).AddHours(3)
+try {
+    while (-not (Test-Path -LiteralPath $StopFile) -and (Get-Date) -lt $deadline) {
+        if ($ParentId -and -not (Get-Process -Id $ParentId -ErrorAction SilentlyContinue)) { break }
+        $sensors = New-Object System.Collections.Generic.List[object]
+        $stack = New-Object System.Collections.Generic.Stack[object]
+        foreach ($hardware in $computer.Hardware) { $stack.Push($hardware) }
+        while ($stack.Count -gt 0) {
+            $hardware = $stack.Pop()
+            try { $hardware.Update() } catch { continue }
+            foreach ($sub in $hardware.SubHardware) { $stack.Push($sub) }
+            foreach ($sensor in $hardware.Sensors) {
+                try {
+                    $value = $null
+                    if ($null -ne $sensor.Value) { $value = [math]::Round([double]$sensor.Value, 2) }
+                    $sensors.Add([pscustomobject]@{ SensorId = $sensor.Identifier.ToString(); Type = [string]$sensor.SensorType; Text = [string]$sensor.Name; Value = $value })
+                } catch { }
+            }
+        }
+        $temp = $OutFile + '.tmp'
+        # ToArray, not @(): Windows PowerShell 5.1 throws "Argument types do not
+        # match" for @() around a generic list here (GitHub's runner, 2026-11-24).
+        [System.IO.File]::WriteAllText($temp, (ConvertTo-Json -InputObject $sensors.ToArray() -Depth 3 -Compress))
+        Move-Item -LiteralPath $temp -Destination $OutFile -Force
+        Start-Sleep -Milliseconds 900
+    }
+} finally { $computer.Close() }
+'@
+
+function Start-PCDoctorLhmReader {
+    # Starts the reader process; returns where it writes, or $null.
+    param([string]$LibraryDir)
+    $work = Join-Path ([System.IO.Path]::GetTempPath()) ('pcdoctor-lhm-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    try {
+        New-Item -ItemType Directory -Path $work -Force | Out-Null
+        $scriptPath = Join-Path $work 'reader.ps1'
+        [System.IO.File]::WriteAllText($scriptPath, $script:LhmReaderScript, (New-Object System.Text.UTF8Encoding($false)))
+        $reader = [ordered]@{ Dir = $work; OutFile = (Join-Path $work 'sensors.json'); StopFile = (Join-Path $work 'stop'); Process = $null }
+        $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $scriptPath),
+            '-LibDir', ('"{0}"' -f $LibraryDir), '-OutFile', ('"{0}"' -f $reader.OutFile), '-StopFile', ('"{0}"' -f $reader.StopFile), '-ParentId', [string]$PID)
+        $reader.Process = Start-Process -FilePath $windowsPowerShell -ArgumentList $arguments -PassThru -WindowStyle Hidden -ErrorAction Stop
+        return $reader
+    } catch {
+        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+        return $null
+    }
+}
+
+function Get-PCDoctorLhmReaderSensors {
+    # The reader's latest sensors, or $null when it has written nothing fresh.
+    param($Reader, [double]$MaxAgeSeconds = 10)
+    if (-not $Reader -or -not (Test-Path -LiteralPath $Reader.OutFile)) { return $null }
+    try {
+        $age = ((Get-Date) - (Get-Item -LiteralPath $Reader.OutFile).LastWriteTime).TotalSeconds
+        if ($age -gt $MaxAgeSeconds) { return $null }
+        # Into a variable first: Windows PowerShell 5.1 passes a JSON array on
+        # as one object, and @() around the pipeline would nest it.
+        $parsed = [System.IO.File]::ReadAllText($Reader.OutFile) | ConvertFrom-Json
+        return @($parsed)
+    } catch { return $null }
+}
+
+function Get-PCDoctorLhmReaderProblem {
+    # Why the reader gave nothing: the error it wrote, or that it ended.
+    param($Reader)
+    if (-not $Reader) { return 'it could not be started' }
+    $errorFile = $Reader.OutFile + '.error'
+    if (Test-Path -LiteralPath $errorFile) {
+        try { return (Protect-PCDoctorText -Text ([System.IO.File]::ReadAllText($errorFile)) -MaxLength 400) } catch { }
+    }
+    if ($Reader.Process -and $Reader.Process.HasExited) { return "it ended with exit code $($Reader.Process.ExitCode)" }
+    return 'it wrote nothing in time'
+}
+
+function Stop-PCDoctorLhmReader {
+    param($Reader)
+    if (-not $Reader) { return }
+    try { [System.IO.File]::WriteAllText($Reader.StopFile, 'stop') } catch { }
+    if ($Reader.Process) {
+        try { if (-not $Reader.Process.WaitForExit(10000)) { $Reader.Process.Kill(); $null = $Reader.Process.WaitForExit(5000) } } catch { }
+    }
+    Remove-Item -LiteralPath $Reader.Dir -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 # ------------------------------------------------------------- PresentMon
 
