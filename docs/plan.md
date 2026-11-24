@@ -188,6 +188,14 @@ both heavier. Needs a real AMD or Intel GPU to test; the owner's is NVIDIA.
 | Windows CI | The Windows job now installs PawnIO from the collector, reads through it and checks that nothing is left: passed. Three Windows PowerShell 5.1 problems were found and fixed on the way (a JSON array passed on as one object; `@()` around a generic list; one sensor group failing on a VM) |
 | Rust collector | `--start-presentmon` checks Intel's signature |
 
+### Done on 2026-11-24, third part
+
+| Item | What was done |
+|---|---|
+| Dependabot | The owner said to merge the low-risk ones. Merged: #18 (all GitHub Actions, grouped), #2 (Go 1.27 build image), #19 (dev tools, without TypeScript 7), #20 (react-query), #15 (recharts) - each with all 20 checks green. #14 (react-router) waits for Dependabot's rebase; #6 (nginx 1.29) was brought up to date for a fresh CI run. Held: #1 (Python 3.15), #3 (Node 26), #5 (Redis 8, one-way volume), #8 (Prometheus 3), #10 (Grafana 13) - see "Dependabot pull requests" |
+| GPU temperature, AMD and Intel | Windows' own adapter counters (D3DKMT `KMTQAITYPE_ADAPTERPERFDATA`) fill `gpu_temp_c` and `gpu_fan_rpm` when there is no nvidia-smi. On NVIDIA the collector logs both, for a cross-check on the owner's next capture ("GPU temperature cross-check" in collector.log). Unproven on real AMD and Intel drivers |
+| Supply chain | The API image's build backend is now hashed; nginx's error log no longer prints key-bearing request lines when the API is down; `deploy/k8s` images pinned by Compose's digests (Dependabot does not watch them: bump by hand with Compose) |
+
 ### Known gaps
 - **CPU temperature on real hardware is unproven:** the VM reports 0 C. The
   owner's next capture (answer y at the prompt) is the test; Memory

@@ -109,6 +109,11 @@ if ($Mode -eq 'Capture') {
     Write-Host "  sensor source: $($manifest.capture.sensors.source); samples: $($manifest.capture.sensors.samples) in $($manifest.capture.actual_seconds) s"
     Write-Host "  presentmon: used=$($manifest.capture.presentmon.used) exit=$($manifest.capture.presentmon.exit_code) frames=$($manifest.capture.presentmon.frames)"
     Write-Host "  last row: $($rows[-1])"
+    $overhead = $manifest.capture.overhead
+    $overheadCpu = $null
+    if ($overhead -and $overhead.collector) { $overheadCpu = $overhead.collector.cpu_seconds }
+    Assert-That (($null -ne $overheadCpu) -and ($overheadCpu -is [ValueType]) -and ([double]$overheadCpu -ge 0)) "manifest: capture.overhead.collector.cpu_seconds is a number >= 0 ($overheadCpu)"
+    if ($overhead) { Write-Host "  overhead: PC Doctor itself used about $($overhead.total_avg_total_pct)% of the CPU during the capture ($($overhead.logical_processors) logical processors)" }
     Assert-That ($manifest.capture.sensors.samples -eq ($rows.Count - 1)) 'manifest: sample count matches the file'
     Assert-That (-not (Test-Path (Join-Path $runDir.FullName 'presentmon_raw.csv'))) 'the unfiltered PresentMon file is gone'
     if ($TemperatureDriver) {

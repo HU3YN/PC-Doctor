@@ -10,6 +10,51 @@ python eval/run_eval.py --real-only  # only real captures - the number that coun
 Real cases go in `eval/cases/<name>/` (a run folder plus `label.json`).
 How to make them safely: [docs/fault-testing.md](../docs/fault-testing.md).
 
+## Add a real case: `make_case.py`
+
+One command turns a run zip into `eval/cases/<name>/` (the run files plus
+`label.json`) and prints the case's first score on today's rules. For the
+25 October run (disk retry on Disk 3, a USB-C drive; stop code 0x9F at shutdown):
+
+```bash
+python eval/make_case.py path/to/run.zip --name 2026-10-25-usb-disk-0x9f \
+    --expect storage.io_errors --expect stability.bluescreen \
+    --source owner-pc \
+    --note "Owner confirmed a USB-C drive was attached (Disk 3) and the crash happened at shutdown."
+```
+
+- `--expect CODE` (repeatable): a finding a correct diagnosis must contain.
+  `--absent CODE` (repeatable): one it must not (`must_not` in the label).
+  Codes are checked against the rule registry (`pcdoctor-analyze rules`).
+- The zip is treated as untrusted: only the collector's known files, at the
+  root or in one top-level folder, no `..` or absolute paths, size capped.
+- Privacy check: because cases are committed, it refuses a run that contains
+  another user's folder name (`C:\Users\name`), an email address or a serial
+  number after the word "serial", and prints file and line (not the content).
+  `--force` accepts those hits and also replaces an existing case; without it
+  an existing case is never overwritten.
+- A miss in the printed score is not an error; it is what the case is for.
+  Check it with `python eval/run_eval.py --real-only`, then read the files once
+  before committing.
+
+Example `label.json`:
+
+```json
+{
+  "expected": ["storage.io_errors", "stability.bluescreen"],
+  "must_not": [],
+  "description": "Owner confirmed a USB-C drive was attached (Disk 3) ...",
+  "machine": "owner-pc",
+  "note": "Owner confirmed a USB-C drive was attached (Disk 3) ...",
+  "source": "owner-pc",
+  "added": "2026-11-24",
+  "run_zip_sha256": "..."
+}
+```
+
+`run_eval.py` reads `expected`, `must_not`, `description` and `machine`; the
+other fields are for people.
+
 There are no real cases yet. The built-in synthetic cases only prove the
 pipeline runs; never quote their score as accuracy.
 

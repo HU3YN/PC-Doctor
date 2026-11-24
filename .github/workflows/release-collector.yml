@@ -43,6 +43,18 @@ jobs:
       # installer and the LibreHardwareMonitorLib packages (the versions
       # temperature-tools.json pins, from PawnIO's release and nuget.org), and
       # fails unless every SHA-256 is the pinned one.
+      # A tag collector-vX.Y.Z must match the version the collector reports
+      # ($script:CollectorVersion in PCDoctorCollector.psm1), or the release
+      # would ship a zip that calls itself something else.
+      - name: The tag matches the collector's version
+        if: startsWith(github.ref, 'refs/tags/collector-v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(sed -n "s/^\$script:CollectorVersion = '\([0-9.]*\)'.*/\1/p" collector/PCDoctorCollector.psm1)
+          echo "tag ${TAG#collector-v}, collector $version"
+          test -n "$version" && test "${TAG#collector-v}" = "$version"
+
       - name: Fetch PresentMon and the temperature tools (checked by SHA-256)
         run: python3 api/pcdoctor_api/services/collector_build.py fetch-tools collector
 
