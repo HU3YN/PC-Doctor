@@ -51,13 +51,13 @@ PowerShell collector in **quick** mode (no frame times, no sensors).
 | Privacy | No computer name, user name, serial number or file name in any file (read in full, and searched for the owner's names) |
 | Analyzer | Read every file with no notes; 16 checks passed, 11 had no data (quick mode) |
 | What it reported | A disk I/O retry ("Disk 3", 25 October) and, minutes later in the log, a 0x9F DRIVER_POWER_STATE_FAILURE blue screen; the matching Kernel-Power 41 was rightly not counted as a power loss |
-| Not yet known | Whether those findings are right: the owner has not confirmed what happened that day. Not an accuracy result |
+| Not yet known | Whether those findings are right. The owner's account (2026-11-24): a USB-C drive was attached that day and the blue screen happened at shutdown, which fits both findings being one incident caused by the USB drive; not yet checked against the run data. Not an accuracy result |
 
 Real hardware showed things the synthetic runs never did: both RAM modules
 report the slot "DIMM 1" (the bank label tells channels apart), disk errors
 name a Windows disk number the collector did not record, the stop-code text
 had a double full stop, and the display reports 59 Hz (Windows' usual name
-for a 60 Hz mode). Still missing: a 5-minute capture with PresentMon and
+for a 60 Hz mode - on a monitor the owner says is 360 Hz, 2026-11-24). Still missing: a 5-minute capture with PresentMon and
 LibreHardwareMonitor.
 
 ### Second real run: a 5-minute capture (2026-11-15)

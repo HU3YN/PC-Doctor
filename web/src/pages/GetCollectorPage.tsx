@@ -16,8 +16,9 @@ export function GetCollectorPage() {
         <div>
           <h1>Get the collector</h1>
           <p className="sub">
-            The collector is a small read-only script. It runs from a USB stick, installs nothing,
-            and saves what it finds back onto the stick.
+            The collector is a small read-only script. It runs from a USB stick and saves what it
+            finds back onto the stick. The one thing it can install is a temporary temperature
+            driver, and only if you say yes.
           </p>
         </div>
         {info.data?.available && (
@@ -55,27 +56,45 @@ export function GetCollectorPage() {
           <div className="muted small stack" style={{ marginTop: 10, gap: 6 }}>
             {info.data.includes_presentmon ? (
               <p>
-                For frame-time captures, also download{" "}
-                <a href="/api/collector/presentmon.zip" download>
-                  PresentMon
-                </a>{" "}
-                (Intel&apos;s frame-time recorder) and unpack it onto the same stick: it goes into the
-                collector&apos;s <code>tools</code> folder. The collector checks Intel&apos;s signature
-                before running it.
+                Frame-time captures work straight from this one download: PresentMon (Intel&apos;s
+                frame-time recorder) is inside the zip, unmodified, with Intel&apos;s licence. The
+                collector checks Intel&apos;s signature before running it.
               </p>
             ) : (
               <p>
-                PresentMon (needed for frame times) is not on this computer. Run{" "}
-                <code>Get-Tools.ps1</code> once, on the stick or here, and it is fetched and checked.
+                PresentMon (Intel&apos;s frame-time recorder, needed for frame times) is not in this
+                server&apos;s zip. The collector fetches and checks it itself on the first capture, if
+                the PC it runs on is online.
+              </p>
+            )}
+            {info.data.includes_temperature_tools ? (
+              <p>
+                CPU temperature works from the same download: the collector asks before installing a
+                temporary driver for the capture, and removes it afterwards.
+              </p>
+            ) : (
+              <p>
+                CPU temperature needs LibreHardwareMonitor started by hand: this server&apos;s zip
+                does not include the temperature driver.
               </p>
             )}
             {info.data.sha256 && (
               <p>
                 SHA-256 of the collector zip:{" "}
-                <code style={{ wordBreak: "break-all" }}>{info.data.sha256}</code>. It is the same file as
-                the collector release on GitHub for this version; check a copy with{" "}
-                <code>gh attestation verify PCDoctor-collector.zip --repo HU3YN/PC-Doctor</code> or by
-                comparing this hash with the release page.
+                <code style={{ wordBreak: "break-all" }}>{info.data.sha256}</code>.{" "}
+                {info.data.includes_presentmon ? (
+                  <>
+                    It is the same file as the collector release on GitHub for this version; check a
+                    copy with{" "}
+                    <code>gh attestation verify PCDoctor-collector.zip --repo HU3YN/PC-Doctor</code> or
+                    by comparing this hash with the release page.
+                  </>
+                ) : (
+                  <>
+                    Without PresentMon inside, it is not the same file as the GitHub release, so it
+                    will not match the release&apos;s hash or attestation.
+                  </>
+                )}
               </p>
             )}
           </div>

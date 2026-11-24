@@ -140,6 +140,13 @@ if ($Mode -eq 'Docker') {
     & $venvPython -m pip install --quiet --disable-pip-version-check -e workers -e 'api[photo]'
     if ($LASTEXITCODE -ne 0) { Stop-WithMessage 'Installing the Python packages failed. The lines above say why.' }
 
+    # The collector download carries Intel's PresentMon (frame times), PawnIO's
+    # installer and LibreHardwareMonitorLib (CPU temperature). They are not in
+    # git: fetch the pinned files once, each checked by its SHA-256. Without
+    # internet the download still works, just without them for the moment.
+    & $venvPython (Join-Path $root 'api\pcdoctor_api\services\collector_build.py') fetch-tools (Join-Path $root 'collector') | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Info 'PresentMon or the temperature tools could not be fetched now, so the collector download goes without them for the moment.' }
+
     $index = Join-Path $root 'web\dist\index.html'
     if (-not (Test-Path -LiteralPath $index)) {
         if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
