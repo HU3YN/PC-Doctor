@@ -74,6 +74,11 @@ def collector_info(settings: Config) -> dict[str, Any]:
         # True when the pinned PresentMon is inside that zip (frame times work
         # straight away); otherwise the collector fetches it on the PC.
         "includes_presentmon": bool(folder and collector_build.trusted_tools(folder)),
+        # True when PawnIO's installer and LibreHardwareMonitorLib with its
+        # libraries are inside, all pinned (CPU temperature needs no download).
+        "includes_temperature_tools": bool(
+            folder and collector_build.trusted_temperature_tools(folder)
+        ),
         "lan_addresses": lan_addresses(),
         "photo_reading": photo_service.available(),
     }
@@ -90,7 +95,9 @@ def _zip_response(data: bytes, filename: str) -> Response:
 @router.get("/collector.zip")
 def collector_zip(settings: Config) -> Response:
     """The collector as one zip: unpack it onto a USB stick and double-click PCDoctor.cmd.
-    Intel's PresentMon is inside (tools/) when this server has the pinned file.
+    Intel's PresentMon is inside (tools/) when this server has the pinned file,
+    and so are PawnIO's installer and LibreHardwareMonitorLib (tools/lhm/) when
+    it has every pinned temperature file.
 
     Built reproducibly (services/collector_build.py): the same commit gives the
     same bytes as the attested GitHub release."""

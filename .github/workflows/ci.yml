@@ -390,6 +390,16 @@ jobs:
         with:
           python-version: "3.13"
 
+      # The temperature driver end to end on a real Windows: the collector
+      # installs PawnIO itself, reads the sensors through it, removes it, and
+      # nothing of it may be left (Invoke-IntegrationTest checks).
+      - name: Capture with the temperature driver (install, read, remove)
+        shell: powershell
+        run: |
+          python api/pcdoctor_api/services/collector_build.py fetch-tools collector
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          collector/tests/Invoke-IntegrationTest.ps1 -Mode Capture -Seconds 8 -Shell powershell -TemperatureDriver
+
       - name: The analyzer reads what the collector wrote
         shell: pwsh
         run: |
