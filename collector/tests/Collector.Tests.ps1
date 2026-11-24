@@ -59,6 +59,49 @@ Describe 'Test-PCDoctorUnderLoad' {
     }
 }
 
+Describe 'Displays and monitors' {
+    It 'matches a monitor interface name to its WMI instance' {
+        $interface = '\\?\DISPLAY#GSM5B7F#5&2b8f1c7&0&UID4352#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}'
+        ConvertTo-PCDoctorMonitorKey $interface | Should -Be 'DISPLAY\GSM5B7F\5&2B8F1C7&0&UID4352'
+        ConvertTo-PCDoctorMonitorKey 'DISPLAY\GSM5B7F\5&2b8f1c7&0&UID4352_0' | Should -Be 'DISPLAY\GSM5B7F\5&2B8F1C7&0&UID4352'
+        ConvertTo-PCDoctorMonitorKey '' | Should -BeNullOrEmpty
+    }
+    It 'reads an EDID string from WMI character codes' {
+        ConvertFrom-PCDoctorWmiString @(69, 120, 97, 109, 112, 108, 101, 0, 0) | Should -Be 'Example'
+        ConvertFrom-PCDoctorWmiString $null | Should -BeNullOrEmpty
+    }
+    It 'reports a 360 Hz monitor left at 59 Hz, with its model name' {
+        $screen = [pscustomobject]@{ Adapter = 'NVIDIA GeForce RTX 5080'; Width = 2560; Height = 1440; Refresh = 59; MaxAtResolution = 360; Max = 360
+            MonitorInterface = '\\?\DISPLAY#ABC1234#5&1&0&UID1#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}' }
+        $monitors = @{ 'DISPLAY\ABC1234\5&1&0&UID1' = [ordered]@{ name = 'Example 27Q'; max_refresh_hz = 360 } }
+        $display = @(ConvertTo-PCDoctorDisplays -Screens @($screen) -Monitors $monitors)[0]
+        $display.resolution | Should -Be '2560x1440'
+        $display.refresh_hz | Should -Be 59
+        $display.max_refresh_hz_at_resolution | Should -Be 360
+        $display.monitor | Should -Be 'Example 27Q'
+        $display.monitor_max_refresh_hz | Should -Be 360
+    }
+    It 'pairs one screen with one monitor even when the names do not match' {
+        $screen = [pscustomobject]@{ Adapter = 'GPU'; Width = 1920; Height = 1080; Refresh = 60; MaxAtResolution = 60; Max = 60; MonitorInterface = $null }
+        $display = @(ConvertTo-PCDoctorDisplays -Screens @($screen) -Monitors @{ 'X' = [ordered]@{ name = 'Only one'; max_refresh_hz = 144 } })[0]
+        $display.monitor | Should -Be 'Only one'
+    }
+    It 'leaves the monitor out when two screens cannot be told apart, and turns 0 and 1 Hz into no reading' {
+        $screens = @(
+            [pscustomobject]@{ Adapter = 'GPU'; Width = 1920; Height = 1080; Refresh = 1; MaxAtResolution = 0; Max = 0; MonitorInterface = $null },
+            [pscustomobject]@{ Adapter = 'GPU'; Width = 1920; Height = 1080; Refresh = 60; MaxAtResolution = 60; Max = 60; MonitorInterface = $null })
+        $monitors = @{ 'A' = [ordered]@{ name = 'A'; max_refresh_hz = 60 }; 'B' = [ordered]@{ name = 'B'; max_refresh_hz = 60 } }
+        $displays = @(ConvertTo-PCDoctorDisplays -Screens $screens -Monitors $monitors)
+        $displays.Count | Should -Be 2
+        $displays[0].monitor | Should -BeNullOrEmpty
+        $displays[0].refresh_hz | Should -BeNullOrEmpty
+        $displays[0].max_refresh_hz | Should -BeNullOrEmpty
+    }
+    It 'gives an empty list, not an error, when Windows answers nothing' {
+        @(ConvertTo-PCDoctorDisplays -Screens @() -Monitors @{}).Count | Should -Be 0
+    }
+}
+
 Describe 'ConvertTo-PCDoctorNumber' {
     It 'reads numbers, formatted values and decimal commas' {
         ConvertTo-PCDoctorNumber 45.5 | Should -Be 45.5

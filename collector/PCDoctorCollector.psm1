@@ -221,6 +221,174 @@ function ConvertTo-PCDoctorMemoryModule {
     }
 }
 
+# The display modes Windows offers, read through user32's EnumDisplaySettings:
+# a 360 Hz monitor left at 60 Hz shows up as "current 59, offered 360". Only
+# mode numbers and the adapter's name are read. C#, because a screen has
+# hundreds of modes and a PowerShell loop over P/Invoke is slow.
+$script:DisplayModeSource = @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
+public static class PCDoctorDisplayModes {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct DISPLAY_DEVICE {
+        public int cb;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceString;
+        public int StateFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceID;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceKey;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct DEVMODE {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+        public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+        public int dmFields;
+        public int dmPositionX, dmPositionY, dmDisplayOrientation, dmDisplayFixedOutput;
+        public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+        public short dmLogPixels;
+        public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
+        public int dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2;
+        public int dmPanningWidth, dmPanningHeight;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern bool EnumDisplayDevicesW(string device, uint index, ref DISPLAY_DEVICE info, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern bool EnumDisplaySettingsW(string device, int mode, ref DEVMODE info);
+
+    const int ENUM_CURRENT_SETTINGS = -1;
+    const int ATTACHED_TO_DESKTOP = 0x1;
+    const int MIRRORING_DRIVER = 0x8;
+    const uint GET_DEVICE_INTERFACE_NAME = 0x1;
+
+    public class Display {
+        public string Adapter;
+        public int Width, Height, Refresh, MaxAtResolution, Max;
+        public string MonitorInterface;   // matches the monitor's WMI instance; not stored
+    }
+
+    static DISPLAY_DEVICE NewDevice() { var d = new DISPLAY_DEVICE(); d.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE)); return d; }
+    static DEVMODE NewMode() { var m = new DEVMODE(); m.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE)); return m; }
+
+    public static List<Display> Read() {
+        var result = new List<Display>();
+        for (uint i = 0; i < 32; i++) {
+            var adapter = NewDevice();
+            if (!EnumDisplayDevicesW(null, i, ref adapter, 0)) break;
+            if ((adapter.StateFlags & ATTACHED_TO_DESKTOP) == 0 || (adapter.StateFlags & MIRRORING_DRIVER) != 0) continue;
+            var current = NewMode();
+            if (!EnumDisplaySettingsW(adapter.DeviceName, ENUM_CURRENT_SETTINGS, ref current)) continue;
+            var display = new Display();
+            display.Adapter = adapter.DeviceString;
+            display.Width = current.dmPelsWidth;
+            display.Height = current.dmPelsHeight;
+            display.Refresh = current.dmDisplayFrequency;
+            for (int n = 0; n < 4096; n++) {
+                var mode = NewMode();
+                if (!EnumDisplaySettingsW(adapter.DeviceName, n, ref mode)) break;
+                if (mode.dmDisplayFrequency <= 1) continue;   // 0 and 1 mean "the hardware's default"
+                if (mode.dmDisplayFrequency > display.Max) display.Max = mode.dmDisplayFrequency;
+                if (mode.dmPelsWidth == current.dmPelsWidth && mode.dmPelsHeight == current.dmPelsHeight &&
+                    mode.dmDisplayFrequency > display.MaxAtResolution) display.MaxAtResolution = mode.dmDisplayFrequency;
+            }
+            var monitor = NewDevice();
+            if (EnumDisplayDevicesW(adapter.DeviceName, 0, ref monitor, GET_DEVICE_INTERFACE_NAME)) display.MonitorInterface = monitor.DeviceID;
+            result.Add(display);
+        }
+        return result;
+    }
+}
+'@
+
+function ConvertTo-PCDoctorMonitorKey {
+    # A monitor's device interface name and its WMI instance name, brought to
+    # one form so the two can be matched:
+    #   \\?\DISPLAY#GSM5B7F#5&2b8f1c7&0&UID4352#{e6f07b5f-...}  -> DISPLAY\GSM5B7F\5&2B8F1C7&0&UID4352
+    #   DISPLAY\GSM5B7F\5&2b8f1c7&0&UID4352_0                   -> DISPLAY\GSM5B7F\5&2B8F1C7&0&UID4352
+    param([string]$Name)
+    if (-not $Name) { return $null }
+    $key = $Name.Trim()
+    if ($key -match '^\\\\\?\\(.+?)#\{[0-9A-Fa-f-]+\}$') { $key = $Matches[1] -replace '#', '\' }
+    $key = $key -replace '_\d+$', ''
+    return $key.ToUpperInvariant()
+}
+
+function ConvertFrom-PCDoctorWmiString {
+    # WMI gives a monitor's EDID strings as arrays of character codes, padded with zeros.
+    param($Codes)
+    if ($null -eq $Codes) { return $null }
+    $chars = foreach ($code in @($Codes)) { if ([int]$code -gt 0) { [char][int]$code } }
+    return Get-PCDoctorTrimmed (-join $chars)
+}
+
+function Get-PCDoctorMonitors {
+    # Each monitor's model name and the highest refresh rate its EDID lists,
+    # keyed by ConvertTo-PCDoctorMonitorKey. The serial number in the EDID is
+    # never read.
+    $monitors = @{}
+    foreach ($id in (Get-PCDoctorCim -Namespace 'root/wmi' -ClassName 'WmiMonitorID')) {
+        $key = ConvertTo-PCDoctorMonitorKey $id.InstanceName
+        if (-not $key) { continue }
+        $monitors[$key] = [ordered]@{ name = (Protect-PCDoctorText -Text (ConvertFrom-PCDoctorWmiString $id.UserFriendlyName) -MaxLength 64); max_refresh_hz = $null }
+    }
+    foreach ($modes in (Get-PCDoctorCim -Namespace 'root/wmi' -ClassName 'WmiMonitorListedSupportedSourceModes')) {
+        $key = ConvertTo-PCDoctorMonitorKey $modes.InstanceName
+        if (-not $key) { continue }
+        $best = $null
+        foreach ($mode in @($modes.MonitorSourceModes)) {
+            if ($mode.VerticalRefreshRateDenominator -gt 0) {
+                $hz = [math]::Round([double]$mode.VerticalRefreshRateNumerator / [double]$mode.VerticalRefreshRateDenominator)
+                if ($null -eq $best -or $hz -gt $best) { $best = $hz }
+            }
+        }
+        if (-not $monitors.ContainsKey($key)) { $monitors[$key] = [ordered]@{ name = $null; max_refresh_hz = $null } }
+        $monitors[$key].max_refresh_hz = $best
+    }
+    return $monitors
+}
+
+function ConvertTo-PCDoctorDisplays {
+    # Screens (from EnumDisplaySettings) joined with their monitors (from WMI).
+    # With one screen and one monitor they belong together even when the two
+    # names cannot be matched.
+    param([object[]]$Screens, [hashtable]$Monitors)
+    $result = @()
+    $screenList = @($Screens | Where-Object { $_ })
+    foreach ($screen in $screenList) {
+        $monitor = $null
+        $key = ConvertTo-PCDoctorMonitorKey $screen.MonitorInterface
+        if ($key -and $Monitors -and $Monitors.ContainsKey($key)) { $monitor = $Monitors[$key] }
+        elseif ($screenList.Count -eq 1 -and $Monitors -and $Monitors.Count -eq 1) { $monitor = @($Monitors.Values)[0] }
+        $result += [ordered]@{
+            adapter                      = Get-PCDoctorTrimmed $screen.Adapter
+            resolution                   = $(if ($screen.Width -gt 0 -and $screen.Height -gt 0) { '{0}x{1}' -f $screen.Width, $screen.Height })
+            refresh_hz                   = $(if ($screen.Refresh -gt 1) { [int]$screen.Refresh })
+            max_refresh_hz_at_resolution = $(if ($screen.MaxAtResolution -gt 1) { [int]$screen.MaxAtResolution })
+            max_refresh_hz               = $(if ($screen.Max -gt 1) { [int]$screen.Max })
+            monitor                      = $(if ($monitor) { $monitor.name })
+            monitor_max_refresh_hz       = $(if ($monitor -and $null -ne $monitor.max_refresh_hz) { [int]$monitor.max_refresh_hz })
+        }
+    }
+    # Unrolled on purpose: callers wrap the answer in @(), which keeps an empty
+    # or one-screen answer a list.
+    return $result
+}
+
+function Get-PCDoctorDisplays {
+    # Every screen attached to the desktop: what it runs at, and the most
+    # Windows and the monitor offer. Empty when Windows answers nothing.
+    $screens = @()
+    try {
+        if (-not ('PCDoctorDisplayModes' -as [type])) { Add-Type -TypeDefinition $script:DisplayModeSource -ErrorAction Stop }
+        $screens = @([PCDoctorDisplayModes]::Read())
+    } catch { return @() }
+    return (ConvertTo-PCDoctorDisplays -Screens $screens -Monitors (Get-PCDoctorMonitors))
+}
+
 function Get-PCDoctorSpecs {
     # The parts in the PC and the Windows version. Deliberately NOT collected:
     # computer name, user names, serial numbers, MAC or IP addresses.
@@ -304,6 +472,7 @@ function Get-PCDoctorSpecs {
         system          = $systemInfo
         cpu             = @($cpus)
         gpu             = @($gpus)
+        displays        = @(Get-PCDoctorDisplays)
         memory          = [ordered]@{
             total_bytes = $totalMemory
             slots_total = $(if ($slots -gt 0) { $slots } else { $null })
