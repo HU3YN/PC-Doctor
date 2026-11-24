@@ -301,6 +301,16 @@ if ($Mode -eq 'Capture') {
         if ($sensorSource -ne 'librehardwaremonitorlib') {
             $nvidiaSmi = Find-PCDoctorNvidiaSmi -Elevated:$isAdmin
             $sensorSource = $(if ($nvidiaSmi) { 'windows+nvidia-smi' } else { 'windows' })
+            if ($nvidiaSmi) {
+                # Cross-check, for the log only: the GPU temperature Windows'
+                # own adapter counters give (what AMD and Intel cards rely on)
+                # next to nvidia-smi's, on the same card.
+                $check = Get-PCDoctorWindowsSample -NvidiaSmi $nvidiaSmi
+                $windowsTemps = @(Get-PCDoctorGpuPerf | Where-Object { $null -ne $_.temperature_c } | ForEach-Object { '{0:0.0} C' -f $_.temperature_c })
+                $log.Add(('GPU temperature cross-check: nvidia-smi {0}; Windows adapter counters {1}' -f
+                    $(if ($null -ne $check['gpu_temp_c']) { '{0:0.0} C' -f $check['gpu_temp_c'] } else { 'none' }),
+                    $(if ($windowsTemps.Count) { $windowsTemps -join ', ' } else { 'none' })))
+            }
             if (-not ($temperatureDriver -and $temperatureDriver.installed_by_collector)) {
                 Add-Warning 'There is no CPU temperature in this run: allow the temperature driver when asked (as administrator), or start LibreHardwareMonitor with Options > Remote Web Server > Run.'
             }
@@ -385,6 +395,10 @@ if ($Mode -eq 'Capture') {
     $rows = New-Object System.Collections.Generic.List[string]
     $rows.Add((Get-PCDoctorSensorHeader))
     $interval = 1.0
+    $selfProcess = $null
+    try { $selfProcess = [System.Diagnostics.Process]::GetCurrentProcess() } catch { }
+    $selfStart = Get-PCDoctorProcessUsage -Process $selfProcess
+    $lhmStart = $(if ($lhmReader) { Get-PCDoctorProcessUsage -Process $lhmReader.Process } else { $null })
     $watch = [System.Diagnostics.Stopwatch]::StartNew()
     $tick = 0
     while ($watch.Elapsed.TotalSeconds -lt $Seconds) {
@@ -400,10 +414,14 @@ if ($Mode -eq 'Capture') {
         if ($wait -gt 0) { Start-Sleep -Milliseconds ([int]($wait * 1000)) }
     }
     $actualSeconds = [math]::Round($watch.Elapsed.TotalSeconds, 1)
+    # The collector's own cost: read now, before the children are stopped.
+    $selfEnd = $(if ($selfProcess) { try { $selfProcess.Refresh() } catch { } ; Get-PCDoctorProcessUsage -Process $selfProcess } else { $null })
+    $lhmEnd = $(if ($lhmReader) { Get-PCDoctorProcessUsage -Process $lhmReader.Process } else { $null })
     if ($interactive) { Write-Progress -Activity 'PC Doctor capture' -Completed }
     [System.IO.File]::WriteAllLines((Join-Path $runDir 'sensors.csv'), $rows, (New-Object System.Text.UTF8Encoding($false)))
     $sampleCount = $rows.Count - 1
 
+    $pmEnd = $null
     $pmInfo = [ordered]@{ used = $false; version = $pmVersion; file = $null; exit_code = $null; frames = 0; other_processes_removed = 0 }
     $targetProcess = $(if ($Process) { $Process } else { $null })
     if ($pmProcess) {
@@ -413,6 +431,7 @@ if ($Mode -eq 'Capture') {
             try { $pmProcess.Kill() } catch { }
         }
         try { $pmInfo.exit_code = $pmProcess.ExitCode } catch { }
+        $pmEnd = Get-PCDoctorProcessUsage -Process $pmProcess
         foreach ($file in @($pmOut, $pmErr)) {
             if (Test-Path -LiteralPath $file) {
                 foreach ($line in @(Get-Content -LiteralPath $file -ErrorAction SilentlyContinue | Select-Object -First 15)) {
@@ -446,6 +465,33 @@ if ($Mode -eq 'Capture') {
         $driverRecord = [ordered]@{}
         foreach ($key in @('name', 'version', 'already_installed', 'asked', 'installed_by_collector', 'removed')) { $driverRecord[$key] = $temperatureDriver[$key] }
     }
+    $overhead = $null
+    try {
+        $cores = [Environment]::ProcessorCount
+        $overheadSeconds = [double]$actualSeconds
+        $selfEntry = $null
+        if ($selfEnd) {
+            $selfEntry = ConvertTo-PCDoctorOverheadEntry -StartCpuSeconds $(if ($selfStart) { $selfStart.CpuSeconds } else { $null }) `
+                -EndCpuSeconds $selfEnd.CpuSeconds -Seconds $overheadSeconds -ProcessorCount $cores -PeakWorkingSetBytes $selfEnd.PeakWorkingSetBytes
+        }
+        $pmEntry = $null
+        if ($pmEnd) {
+            $pmEntry = ConvertTo-PCDoctorOverheadEntry -StartCpuSeconds 0 -EndCpuSeconds $pmEnd.CpuSeconds `
+                -Seconds $overheadSeconds -ProcessorCount $cores -PeakWorkingSetBytes $pmEnd.PeakWorkingSetBytes
+        }
+        $lhmEntry = $null
+        if ($lhmEnd) {
+            $lhmEntry = ConvertTo-PCDoctorOverheadEntry -StartCpuSeconds $(if ($lhmStart) { $lhmStart.CpuSeconds } else { $null }) `
+                -EndCpuSeconds $lhmEnd.CpuSeconds -Seconds $overheadSeconds -ProcessorCount $cores -PeakWorkingSetBytes $lhmEnd.PeakWorkingSetBytes
+        }
+        $overhead = ConvertTo-PCDoctorOverhead -Seconds $overheadSeconds -ProcessorCount $cores `
+            -Collector $selfEntry -PresentMon $pmEntry -TemperatureReader $lhmEntry
+        $overheadLine = 'PC Doctor itself used about {0}% of the CPU during the capture.' -f $overhead.total_avg_total_pct.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+        Write-Step $overheadLine
+        $log.Add($overheadLine)
+    } catch {
+        $log.Add('Could not measure the collector overhead: ' + $_.Exception.Message)
+    }
     $capture = [ordered]@{
         requested_seconds = $Seconds
         actual_seconds    = $actualSeconds
@@ -453,6 +499,7 @@ if ($Mode -eq 'Capture') {
         load_at_start     = [ordered]@{ busy = $load.busy; gpu_load_pct = $load.gpu_load_pct; cpu_load_pct = $load.cpu_load_pct; waited_seconds = $waited }
         presentmon        = $pmInfo
         temperature_driver = $driverRecord
+        overhead          = $overhead
         sensors           = [ordered]@{
             source           = $sensorSource
             interval_seconds = $interval

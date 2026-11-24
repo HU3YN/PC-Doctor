@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          image: postgres:16-alpine@sha256:f377d590e5474681d4d7838635031a2b50647923b7abfa803ce9b5ff35d5c663
           env:
             - {name: POSTGRES_USER, value: pcdoctor}
             - {name: POSTGRES_DB, value: pcdoctor}
@@ -77,7 +77,7 @@ spec:
     spec:
       containers:
         - name: redis
-          image: redis:7-alpine
+          image: redis:7-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
           # A queue of jobs waiting a few seconds: nothing worth writing to disk.
           # A password even inside the cluster: anything that gets a foothold
           # in another pod should not be able to read or forge jobs.

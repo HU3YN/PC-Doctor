@@ -17,10 +17,12 @@ COPY workers/pcdoctor_analysis workers/pcdoctor_analysis
 COPY api/pyproject.toml api/README.md api/
 COPY api/pcdoctor_api api/pcdoctor_api
 # Every dependency at the exact version and hash in the lock file
-# (api/lock.py makes it), then this repository's own two packages.
+# (api/lock.py makes it, build backend setuptools included), then this
+# repository's own two packages built with that backend and no network:
+# nothing is downloaded outside the hashed lock.
 COPY api/requirements.lock api/
 RUN pip install --require-hashes -r api/requirements.lock \
-    && pip install --no-deps ./workers ./api
+    && pip install --no-deps --no-build-isolation ./workers ./api
 
 # The Windows collector, offered for download from the dashboard.
 COPY collector/PCDoctor.cmd collector/Collect-PCDoctor.ps1 collector/PCDoctorCollector.psm1 \

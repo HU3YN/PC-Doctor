@@ -851,6 +851,200 @@ function Get-PCDoctorLhmSensors {
     } catch { return $null }
 }
 
+# Each graphics adapter's temperature and fan speed as Windows' own graphics
+# kernel reports them (D3DKMTQueryAdapterInfo, KMTQAITYPE_ADAPTERPERFDATA, the
+# source Task Manager shows; WDDM 2.4 or later). Needs no vendor tool, so it
+# covers AMD and Intel cards. Only raw numbers are returned; the PowerShell
+# side decides what counts as a reading. Never throws: on an old Windows, or
+# outside Windows, the answer is just shorter or empty.
+$script:GpuPerfSource = @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
+public static class PCDoctorGpuPerf {
+    [StructLayout(LayoutKind.Sequential)]
+    struct D3DKMT_ENUMADAPTERS2 {
+        public uint NumAdapters;
+        public IntPtr pAdapters;          // D3DKMT_ADAPTERINFO[], 20 bytes each
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct D3DKMT_QUERYADAPTERINFO {
+        public uint hAdapter;
+        public int Type;
+        public IntPtr pPrivateDriverData;
+        public uint PrivateDriverDataSize;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct D3DKMT_CLOSEADAPTER {
+        public uint hAdapter;
+    }
+
+    [DllImport("gdi32.dll")]
+    static extern int D3DKMTEnumAdapters2(ref D3DKMT_ENUMADAPTERS2 info);
+    [DllImport("gdi32.dll")]
+    static extern int D3DKMTQueryAdapterInfo(ref D3DKMT_QUERYADAPTERINFO info);
+    [DllImport("gdi32.dll")]
+    static extern int D3DKMTCloseAdapter(ref D3DKMT_CLOSEADAPTER info);
+
+    const int KMTQAITYPE_ADAPTERPERFDATA = 62;
+    const int ADAPTERINFO_SIZE = 20;      // hAdapter, LUID (low, high), NumOfSources, BOOL
+    const int PERFDATA_SIZE = 64;
+    const int PERFDATA_FAN_RPM = 48;
+    const int PERFDATA_TEMPERATURE = 56;  // deci-Celsius
+    const int MAX_ADAPTERS = 64;
+
+    public class Adapter {
+        public uint LuidLow;
+        public int LuidHigh;              // matches the GPU engine counters; not stored
+        public int Status;                // NTSTATUS of the perfdata query, 0 = success
+        public long TemperatureDeciC;     // raw; 0 = the driver gave none
+        public long FanRpm;               // raw; 0 = the driver gave none
+    }
+
+    public static List<Adapter> Read() {
+        var result = new List<Adapter>();
+        var handles = new List<uint>();
+        IntPtr list = IntPtr.Zero;
+        try {
+            var enumInfo = new D3DKMT_ENUMADAPTERS2();
+            if (D3DKMTEnumAdapters2(ref enumInfo) != 0) return result;
+            uint count = enumInfo.NumAdapters;
+            if (count == 0 || count > MAX_ADAPTERS) return result;
+            list = Marshal.AllocHGlobal((int)count * ADAPTERINFO_SIZE);
+            for (int b = 0; b < (int)count * ADAPTERINFO_SIZE; b++) Marshal.WriteByte(list, b, 0);
+            enumInfo.NumAdapters = count;
+            enumInfo.pAdapters = list;
+            if (D3DKMTEnumAdapters2(ref enumInfo) != 0) return result;
+            uint filled = Math.Min(enumInfo.NumAdapters, count);
+            for (int i = 0; i < (int)filled; i++) {
+                int at = i * ADAPTERINFO_SIZE;
+                uint handle = (uint)Marshal.ReadInt32(list, at);
+                handles.Add(handle);
+                var adapter = new Adapter();
+                adapter.LuidLow = (uint)Marshal.ReadInt32(list, at + 4);
+                adapter.LuidHigh = Marshal.ReadInt32(list, at + 8);
+                adapter.Status = -1;
+                IntPtr perf = IntPtr.Zero;
+                try {
+                    perf = Marshal.AllocHGlobal(PERFDATA_SIZE);
+                    for (int b = 0; b < PERFDATA_SIZE; b++) Marshal.WriteByte(perf, b, 0);   // PhysicalAdapterIndex = 0
+                    var query = new D3DKMT_QUERYADAPTERINFO();
+                    query.hAdapter = handle;
+                    query.Type = KMTQAITYPE_ADAPTERPERFDATA;
+                    query.pPrivateDriverData = perf;
+                    query.PrivateDriverDataSize = PERFDATA_SIZE;
+                    adapter.Status = D3DKMTQueryAdapterInfo(ref query);
+                    if (adapter.Status == 0) {
+                        adapter.TemperatureDeciC = (uint)Marshal.ReadInt32(perf, PERFDATA_TEMPERATURE);
+                        adapter.FanRpm = (uint)Marshal.ReadInt32(perf, PERFDATA_FAN_RPM);
+                    }
+                } catch (Exception) {
+                } finally {
+                    if (perf != IntPtr.Zero) Marshal.FreeHGlobal(perf);
+                }
+                result.Add(adapter);
+            }
+        } catch (Exception) {
+        } finally {
+            foreach (uint handle in handles) {
+                try { var close = new D3DKMT_CLOSEADAPTER(); close.hAdapter = handle; D3DKMTCloseAdapter(ref close); } catch (Exception) { }
+            }
+            if (list != IntPtr.Zero) Marshal.FreeHGlobal(list);
+        }
+        return result;
+    }
+}
+'@
+
+function ConvertTo-PCDoctorGpuLuidKey {
+    # One form for an adapter's LUID, as the GPU engine counters write it
+    # (pid_1234_luid_0x00000000_0x0000D1A5_phys_0_eng_0_engtype_3D):
+    # 0x{HighPart:X8}_0x{LowPart:X8}. Takes either the two parts or the
+    # "0x..._0x..." text from a counter name. Used only for matching; never stored.
+    param([object]$High, [object]$Low)
+    if ($High -is [string] -and $null -eq $Low) {
+        if ($High -notmatch '^(?:luid_)?0x([0-9A-Fa-f]{1,8})_0x([0-9A-Fa-f]{1,8})$') { return $null }
+        $highPart = [Convert]::ToUInt32($Matches[1], 16)
+        $lowPart = [Convert]::ToUInt32($Matches[2], 16)
+    } else {
+        if ($null -eq $High -or $null -eq $Low) { return $null }
+        $highPart = [uint32]([int64]$High -band 0xFFFFFFFFL)
+        $lowPart = [uint32]([int64]$Low -band 0xFFFFFFFFL)
+    }
+    return ('0x{0:X8}_0x{1:X8}' -f $highPart, $lowPart)
+}
+
+function ConvertTo-PCDoctorGpuPerfReading {
+    # Raw D3DKMT numbers -> readings. A driver that does not fill a field gives
+    # 0; a temperature over 150 C is not a real one either.
+    param($Adapter)
+    $reading = [ordered]@{ key = $null; temperature_c = $null; fan_rpm = $null }
+    if ($null -eq $Adapter) { return $reading }
+    $reading.key = ConvertTo-PCDoctorGpuLuidKey $Adapter.LuidHigh $Adapter.LuidLow
+    if ($null -ne $Adapter.Status -and [int]$Adapter.Status -ne 0) { return $reading }
+    $deci = [double]$Adapter.TemperatureDeciC
+    if ($deci -gt 0 -and $deci -le 1500) { $reading.temperature_c = $deci / 10.0 }
+    $fan = [double]$Adapter.FanRpm
+    if ($fan -gt 0 -and $fan -lt 100000) { $reading.fan_rpm = $fan }
+    return $reading
+}
+
+function Select-PCDoctorBusiestGpuKey {
+    # The adapter with the highest 3D load, by LUID key. $null when there is
+    # no clear one (no LUIDs in the counter names, or a tie - often all 0).
+    param([hashtable]$LoadByAdapter)
+    if (-not $LoadByAdapter -or $LoadByAdapter.Count -eq 0) { return $null }
+    $best = $null
+    $bestLoad = $null
+    $tie = $false
+    foreach ($key in $LoadByAdapter.Keys) {
+        $load = [double]$LoadByAdapter[$key]
+        if ($null -eq $bestLoad -or $load -gt $bestLoad) { $best = $key; $bestLoad = $load; $tie = $false }
+        elseif ($load -eq $bestLoad) { $tie = $true }
+    }
+    if ($tie -or -not (ConvertTo-PCDoctorGpuLuidKey ([string]$best))) { return $null }
+    return (ConvertTo-PCDoctorGpuLuidKey ([string]$best))
+}
+
+function Select-PCDoctorGpuPerfReading {
+    # Which adapter's D3DKMT reading belongs in the sample: the busiest
+    # adapter's, when it can be matched by LUID (even if it gave no
+    # temperature - another adapter's would be the wrong GPU); otherwise the
+    # one adapter that reports a temperature; otherwise none.
+    param([object[]]$Readings, [string]$BusiestKey)
+    $readings = @($Readings | Where-Object { $_ })
+    if ($BusiestKey) {
+        foreach ($reading in $readings) {
+            if ($reading.key -and $reading.key -eq $BusiestKey) {
+                if ($null -eq $reading.temperature_c -and $null -eq $reading.fan_rpm) { return $null }
+                return $reading
+            }
+        }
+    }
+    $withTemperature = @($readings | Where-Object { $null -ne $_.temperature_c })
+    if ($withTemperature.Count -eq 1) { return $withTemperature[0] }
+    return $null
+}
+
+function Get-PCDoctorGpuPerf {
+    # Every adapter's D3DKMT reading (see $script:GpuPerfSource). Empty when
+    # Windows gives none. The C# is compiled once; if that fails it is not
+    # tried again for every sample.
+    if ($script:GpuPerfUnavailable) { return @() }
+    try {
+        if (-not ('PCDoctorGpuPerf' -as [type])) { Add-Type -TypeDefinition $script:GpuPerfSource -ErrorAction Stop }
+        $adapters = @([PCDoctorGpuPerf]::Read())
+    } catch {
+        $script:GpuPerfUnavailable = $true
+        return @()
+    }
+    $readings = foreach ($adapter in $adapters) { ConvertTo-PCDoctorGpuPerfReading $adapter }
+    return @($readings)
+}
+
 function Find-PCDoctorNvidiaSmi {
     # The NVIDIA driver puts nvidia-smi in System32, which only administrators
     # can change, so look there first. The PATH is used only when not
@@ -876,8 +1070,9 @@ function Find-PCDoctorNvidiaSmi {
 
 function Get-PCDoctorWindowsSample {
     # Readings Windows can give without any extra tool: CPU load and speed, RAM
-    # use, GPU load - and, with an NVIDIA card, its temperature, power and
-    # memory from nvidia-smi. No CPU temperature: Windows has no reliable source
+    # use, GPU load, and on AMD and Intel cards the GPU temperature (and fan)
+    # from Windows' own adapter counters - and, with an NVIDIA card, its
+    # temperature, power and memory from nvidia-smi. No CPU temperature: Windows has no reliable source
     # for it, which is why LibreHardwareMonitor is recommended.
     # CIM classes are used instead of Get-Counter because performance counter
     # names are translated on a non-English Windows and these are not.
@@ -912,6 +1107,7 @@ function Get-PCDoctorWindowsSample {
     }
 
     $gotGpu = $false
+    $byAdapter = @{}
     if ($NvidiaSmi) {
         try {
             $line = (& $NvidiaSmi '--query-gpu=temperature.gpu,utilization.gpu,power.draw,memory.used,memory.total' '--format=csv,noheader,nounits' 2>$null | Select-Object -First 1)
@@ -934,7 +1130,6 @@ function Get-PCDoctorWindowsSample {
         # over every process using them.
         $engines = Get-PCDoctorCim -ClassName 'Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine' -Filter "Name LIKE '%engtype_3D%'"
         if ($engines.Count -gt 0) {
-            $byAdapter = @{}
             foreach ($engine in $engines) {
                 $adapter = 'gpu'
                 if ($engine.Name -match 'luid_(0x[0-9A-Fa-f]+_0x[0-9A-Fa-f]+)') { $adapter = $Matches[1] }
@@ -943,6 +1138,17 @@ function Get-PCDoctorWindowsSample {
             }
             $busiest = ($byAdapter.Values | Measure-Object -Maximum).Maximum
             $sample['gpu_load_pct'] = [math]::Min(100.0, [double]$busiest)
+        }
+    }
+    if ($null -eq $sample['gpu_temp_c'] -and -not $gotGpu) {
+        # No NVIDIA card, or nvidia-smi gave nothing: Windows' own adapter
+        # counters (Task Manager's GPU temperature), which AMD and Intel
+        # drivers fill. Skipped when nvidia-smi gave a load but no
+        # temperature: the load is then from a card no LUID is known for.
+        $reading = Select-PCDoctorGpuPerfReading -Readings (Get-PCDoctorGpuPerf) -BusiestKey (Select-PCDoctorBusiestGpuKey $byAdapter)
+        if ($reading) {
+            $sample['gpu_temp_c'] = $reading.temperature_c
+            if ($null -eq $sample['gpu_fan_rpm']) { $sample['gpu_fan_rpm'] = $reading.fan_rpm }
         }
     }
     return $sample
@@ -1434,6 +1640,73 @@ function Get-PCDoctorResultLink {
     $id = [string]$Answer.run.id
     if ($id -cmatch '^[0-9a-f]{32}$') { return "$base/runs/$id" }
     return $null
+}
+
+function Get-PCDoctorProcessUsage {
+    # CPU seconds used so far and the peak working set of one process, or $null
+    # when it cannot be read. An exited process still answers if its handle was
+    # kept (the caller touched .Handle while it ran). Never throws.
+    [CmdletBinding()]
+    param($Process)
+    if (-not $Process) { return $null }
+    $cpu = $null
+    $peak = $null
+    try { $cpu = [double]$Process.TotalProcessorTime.TotalSeconds } catch { }
+    try { $peak = [double]$Process.PeakWorkingSet64 } catch { }
+    if ($null -eq $cpu) { return $null }
+    return [pscustomobject]@{ CpuSeconds = $cpu; PeakWorkingSetBytes = $peak }
+}
+
+function ConvertTo-PCDoctorOverheadEntry {
+    # One process's cost over the capture: CPU seconds, average % of one core,
+    # average % of the whole CPU, peak memory. $null when the end reading is missing.
+    [CmdletBinding()]
+    param(
+        $StartCpuSeconds,
+        $EndCpuSeconds,
+        [double]$Seconds,
+        [int]$ProcessorCount,
+        $PeakWorkingSetBytes
+    )
+    if ($null -eq $EndCpuSeconds) { return $null }
+    $start = $(if ($null -eq $StartCpuSeconds) { 0.0 } else { [double]$StartCpuSeconds })
+    $used = [math]::Max(0.0, ([double]$EndCpuSeconds) - $start)
+    $cores = [math]::Max(1, $ProcessorCount)
+    $corePct = 0.0
+    if ($Seconds -gt 0) { $corePct = 100.0 * $used / $Seconds }
+    $peakMb = $null
+    if ($null -ne $PeakWorkingSetBytes -and [double]$PeakWorkingSetBytes -gt 0) { $peakMb = [math]::Round(([double]$PeakWorkingSetBytes) / 1MB, 2) }
+    return [ordered]@{
+        cpu_seconds         = [math]::Round($used, 2)
+        avg_core_pct        = [math]::Round($corePct, 2)
+        avg_total_pct       = [math]::Round($corePct / $cores, 2)
+        peak_working_set_mb = $peakMb
+    }
+}
+
+function ConvertTo-PCDoctorOverhead {
+    # The manifest's capture.overhead from per-process entries (each from
+    # ConvertTo-PCDoctorOverheadEntry, or $null when that process was not there).
+    [CmdletBinding()]
+    param(
+        [double]$Seconds,
+        [int]$ProcessorCount,
+        $Collector,
+        $PresentMon,
+        $TemperatureReader
+    )
+    $total = 0.0
+    foreach ($entry in @($Collector, $PresentMon, $TemperatureReader)) {
+        if ($entry) { $total += [double]$entry.avg_total_pct }
+    }
+    return [ordered]@{
+        seconds             = [math]::Round([math]::Max(0.0, $Seconds), 1)
+        logical_processors  = [math]::Max(1, $ProcessorCount)
+        collector           = $Collector
+        presentmon          = $PresentMon
+        temperature_reader  = $TemperatureReader
+        total_avg_total_pct = [math]::Round($total, 2)
+    }
 }
 
 Export-ModuleMember -Function *-PCDoctor*

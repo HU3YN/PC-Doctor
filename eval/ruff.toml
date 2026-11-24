@@ -10,4 +10,4 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM"]
 
 [lint.isort]
 # The eval scripts are imported by the tests as top-level modules.
-known-first-party = ["photo_eval", "run_eval", "agent_eval"]
+known-first-party = ["photo_eval", "run_eval", "agent_eval", "make_case"]
