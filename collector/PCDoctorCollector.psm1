@@ -1001,6 +1001,222 @@ function Format-PCDoctorSensorRow {
 
 function Get-PCDoctorSensorHeader { 'elapsed_s,' + ($script:SensorColumns -join ',') }
 
+# ------------------------------------------------- CPU temperature driver
+# Windows offers no CPU temperature to a plain program. With the owner's
+# agreement (docs/plan.md, 2026-11-17) the collector may, during a capture and
+# only after asking, install PawnIO - a hardware-access driver signed by
+# Microsoft's hardware program - read temperatures with LibreHardwareMonitorLib,
+# and remove the driver again when the capture ends. This is the one thing the
+# collector ever installs. Every file is checked against temperature-tools.json.
+
+$script:PawnIOUninstallKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO'
+$script:PawnIOMarker = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'PCDoctor\pawnio-installed-by-pcdoctor.txt'
+
+function Test-PCDoctorFileHash {
+    param([string]$Path, [string]$Sha256)
+    if (-not $Path -or -not $Sha256 -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    try { return ((Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash -eq $Sha256.ToUpperInvariant()) } catch { return $false }
+}
+
+function Get-PCDoctorTemperatureTools {
+    # The pinned PawnIO installer and LibreHardwareMonitorLib files next to the
+    # collector. $null when any of them is missing or not the pinned file -
+    # then none of them is used. Problem is set when the files are there but
+    # the installer's signature is wrong.
+    param(
+        [string]$CollectorDir,
+        [scriptblock]$IsTrusted = { param($file, $publisher) Test-PCDoctorSignedBy -Path $file -Publisher $publisher }
+    )
+    $pinFile = Join-Path $CollectorDir 'temperature-tools.json'
+    if (-not (Test-Path -LiteralPath $pinFile)) { return $null }
+    try { $pins = Get-Content -LiteralPath $pinFile -Raw | ConvertFrom-Json } catch { return $null }
+    if (-not $pins.pawnio -or -not $pins.libraries) { return $null }
+    $tools = Join-Path $CollectorDir 'tools'
+    $installer = Join-Path $tools ([string]$pins.pawnio.file)
+    if (-not (Test-PCDoctorFileHash -Path $installer -Sha256 ([string]$pins.pawnio.sha256))) { return $null }
+    $libDir = Join-Path $tools 'lhm'
+    foreach ($library in @($pins.libraries)) {
+        $name = (([string]$library.dll) -split '/')[-1]
+        if (-not (Test-PCDoctorFileHash -Path (Join-Path $libDir $name) -Sha256 ([string]$library.dll_sha256))) { return $null }
+    }
+    $result = [ordered]@{ Installer = $installer; LibraryDir = $libDir; Version = [string]$pins.pawnio.version; Problem = $null }
+    if (-not (& $IsTrusted $installer ([string]$pins.pawnio.signer))) {
+        $result.Problem = "The PawnIO installer does not carry a valid signature from $($pins.pawnio.signer), so it was not used and there is no CPU temperature in this run."
+    }
+    return $result
+}
+
+function Test-PCDoctorPawnIOInstalled { Test-Path -LiteralPath $script:PawnIOUninstallKey }
+
+function Get-PCDoctorPawnIOInf {
+    # The published name (oemNN.inf) of PawnIO's driver package, for removal.
+    $driver = @(Get-PCDoctorCim -ClassName 'Win32_PnPSignedDriver' -Filter "DeviceName = 'PawnIO'") | Select-Object -First 1
+    if ($driver -and ([string]$driver.InfName) -match '^oem\d+\.inf$') { return [string]$driver.InfName }
+    return $null
+}
+
+function Get-PCDoctorPawnIOLeftovers {
+    # What of PawnIO is still on this PC. Locale-independent checks only:
+    # registry, folders, the service and the device.
+    $left = [ordered]@{
+        registered    = (Test-PCDoctorPawnIOInstalled)
+        folder        = (Test-Path -LiteralPath (Join-Path $env:ProgramFiles 'PawnIO'))
+        service       = [bool](Get-Service -Name 'PawnIO' -ErrorAction SilentlyContinue)
+        driver_store  = [bool](Get-ChildItem -LiteralPath (Join-Path $env:SystemRoot 'System32\DriverStore\FileRepository') -Directory -Filter 'pawnio.inf_*' -ErrorAction SilentlyContinue)
+        device        = $false
+    }
+    try { $left.device = [bool](Get-PnpDevice -InstanceId 'ROOT\PAWNIO\0000' -ErrorAction Stop) } catch { }
+    $left.clean = -not ($left.registered -or $left.folder -or $left.service -or $left.driver_store -or $left.device)
+    return $left
+}
+
+function Install-PCDoctorPawnIO {
+    # Installs PawnIO silently and notes that PC Doctor did it, so a later run
+    # can remove it if this one is cut short. Returns the driver package name
+    # (needed for removal) or $null when the install failed.
+    param([string]$Installer)
+    try {
+        $process = Start-Process -FilePath $Installer -ArgumentList '-install', '-silent' -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
+    } catch { return $null }
+    if (-not (Test-PCDoctorPawnIOInstalled)) { return $null }
+    $inf = Get-PCDoctorPawnIOInf
+    try {
+        New-Item -ItemType Directory -Path (Split-Path -Parent $script:PawnIOMarker) -Force | Out-Null
+        [System.IO.File]::WriteAllText($script:PawnIOMarker, ("installed {0} by the PC Doctor collector; package {1}; exit code {2}" -f (Get-Date).ToString('s'), $inf, $process.ExitCode))
+    } catch { }
+    if ($inf) { return $inf }
+    return 'unknown'
+}
+
+function Uninstall-PCDoctorPawnIO {
+    # PawnIO's own uninstaller, then what it was seen to leave behind on
+    # Windows Server 2025 (2026-11-24): the device, the driver package in the
+    # driver store and a stopped service. Returns what is left.
+    param([string]$Installer, [string]$Inf)
+    if (-not $Inf -or $Inf -eq 'unknown') { $Inf = Get-PCDoctorPawnIOInf }
+    if ($Installer -and (Test-Path -LiteralPath $Installer)) {
+        try { Start-Process -FilePath $Installer -ArgumentList '-uninstall', '-silent' -Wait -WindowStyle Hidden -ErrorAction Stop } catch { }
+    } elseif (Test-PCDoctorPawnIOInstalled) {
+        $folder = [string](Get-ItemProperty -LiteralPath $script:PawnIOUninstallKey -Name InstallLocation -ErrorAction SilentlyContinue).InstallLocation
+        $uninstaller = $(if ($folder) { Join-Path $folder 'uninstall.exe' })
+        if ($uninstaller -and (Test-Path -LiteralPath $uninstaller) -and (Test-PCDoctorSignedBy -Path $uninstaller -Publisher 'namazso')) {
+            try { Start-Process -FilePath $uninstaller -ArgumentList '-uninstall', '-silent' -Wait -WindowStyle Hidden -ErrorAction Stop } catch { }
+        }
+    }
+    Start-Sleep -Seconds 2
+    $pnputil = Join-Path $env:SystemRoot 'System32\pnputil.exe'
+    try { if (Get-PnpDevice -InstanceId 'ROOT\PAWNIO\0000' -ErrorAction Stop) { & $pnputil /remove-device 'ROOT\PAWNIO\0000' | Out-Null } } catch { }
+    if ($Inf -match '^oem\d+\.inf$') { & $pnputil /delete-driver $Inf /uninstall /force | Out-Null }
+    if (Get-Service -Name 'PawnIO' -ErrorAction SilentlyContinue) {
+        & (Join-Path $env:SystemRoot 'System32\sc.exe') stop PawnIO | Out-Null
+        & (Join-Path $env:SystemRoot 'System32\sc.exe') delete PawnIO | Out-Null
+    }
+    Start-Sleep -Seconds 1
+    $left = Get-PCDoctorPawnIOLeftovers
+    if ($left.clean) { Remove-Item -LiteralPath $script:PawnIOMarker -Force -ErrorAction SilentlyContinue }
+    return $left
+}
+
+function Test-PCDoctorPawnIOLeftBehind {
+    # A capture cut short (the window closed) leaves the driver PC Doctor
+    # installed. True when the marker says so and PawnIO is still there.
+    return ((Test-Path -LiteralPath $script:PawnIOMarker) -and -not (Get-PCDoctorPawnIOLeftovers).clean)
+}
+
+# LibreHardwareMonitorLib runs in its own Windows PowerShell 5.1 process: its
+# libraries are built for .NET Framework, and the driver handle it holds is
+# closed for certain when that process ends, before the driver is removed. It
+# writes every sensor, once a second, in the shape of LibreHardwareMonitor's
+# web server, so ConvertTo-PCDoctorSample reads it unchanged.
+$script:LhmReaderScript = @'
+param([string]$LibDir, [string]$OutFile, [string]$StopFile, [int]$ParentId)
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @"
+using System; using System.IO; using System.Reflection;
+public static class PCDoctorLhmResolver {
+    public static string Dir;
+    public static void Enable() {
+        AppDomain.CurrentDomain.AssemblyResolve += delegate(object sender, ResolveEventArgs e) {
+            string file = Path.Combine(Dir, new AssemblyName(e.Name).Name + ".dll");
+            return File.Exists(file) ? Assembly.LoadFrom(file) : null;
+        };
+    }
+}
+"@
+[PCDoctorLhmResolver]::Dir = $LibDir
+[PCDoctorLhmResolver]::Enable()
+Add-Type -Path (Join-Path $LibDir 'LibreHardwareMonitorLib.dll')
+$computer = New-Object LibreHardwareMonitor.Hardware.Computer
+$computer.IsCpuEnabled = $true
+$computer.IsGpuEnabled = $true
+$computer.IsMemoryEnabled = $true
+$computer.Open()
+$deadline = (Get-Date).AddHours(3)
+try {
+    while (-not (Test-Path -LiteralPath $StopFile) -and (Get-Date) -lt $deadline) {
+        if ($ParentId -and -not (Get-Process -Id $ParentId -ErrorAction SilentlyContinue)) { break }
+        $sensors = New-Object System.Collections.Generic.List[object]
+        $stack = New-Object System.Collections.Generic.Stack[object]
+        foreach ($hardware in $computer.Hardware) { $stack.Push($hardware) }
+        while ($stack.Count -gt 0) {
+            $hardware = $stack.Pop()
+            try { $hardware.Update() } catch { }
+            foreach ($sub in $hardware.SubHardware) { $stack.Push($sub) }
+            foreach ($sensor in $hardware.Sensors) {
+                $value = $null
+                if ($null -ne $sensor.Value) { $value = [math]::Round([double]$sensor.Value, 2) }
+                $sensors.Add([ordered]@{ SensorId = $sensor.Identifier.ToString(); Type = [string]$sensor.SensorType; Text = [string]$sensor.Name; Value = $value })
+            }
+        }
+        $temp = $OutFile + '.tmp'
+        [System.IO.File]::WriteAllText($temp, (ConvertTo-Json -InputObject @($sensors) -Depth 3 -Compress))
+        Move-Item -LiteralPath $temp -Destination $OutFile -Force
+        Start-Sleep -Milliseconds 900
+    }
+} finally { $computer.Close() }
+'@
+
+function Start-PCDoctorLhmReader {
+    # Starts the reader process; returns where it writes, or $null.
+    param([string]$LibraryDir)
+    $work = Join-Path ([System.IO.Path]::GetTempPath()) ('pcdoctor-lhm-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    try {
+        New-Item -ItemType Directory -Path $work -Force | Out-Null
+        $scriptPath = Join-Path $work 'reader.ps1'
+        [System.IO.File]::WriteAllText($scriptPath, $script:LhmReaderScript, (New-Object System.Text.UTF8Encoding($false)))
+        $reader = [ordered]@{ Dir = $work; OutFile = (Join-Path $work 'sensors.json'); StopFile = (Join-Path $work 'stop'); Process = $null }
+        $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $scriptPath),
+            '-LibDir', ('"{0}"' -f $LibraryDir), '-OutFile', ('"{0}"' -f $reader.OutFile), '-StopFile', ('"{0}"' -f $reader.StopFile), '-ParentId', [string]$PID)
+        $reader.Process = Start-Process -FilePath $windowsPowerShell -ArgumentList $arguments -PassThru -WindowStyle Hidden -ErrorAction Stop
+        return $reader
+    } catch {
+        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+        return $null
+    }
+}
+
+function Get-PCDoctorLhmReaderSensors {
+    # The reader's latest sensors, or $null when it has written nothing fresh.
+    param($Reader, [double]$MaxAgeSeconds = 10)
+    if (-not $Reader -or -not (Test-Path -LiteralPath $Reader.OutFile)) { return $null }
+    try {
+        $age = ((Get-Date) - (Get-Item -LiteralPath $Reader.OutFile).LastWriteTime).TotalSeconds
+        if ($age -gt $MaxAgeSeconds) { return $null }
+        return @([System.IO.File]::ReadAllText($Reader.OutFile) | ConvertFrom-Json)
+    } catch { return $null }
+}
+
+function Stop-PCDoctorLhmReader {
+    param($Reader)
+    if (-not $Reader) { return }
+    try { [System.IO.File]::WriteAllText($Reader.StopFile, 'stop') } catch { }
+    if ($Reader.Process) {
+        try { if (-not $Reader.Process.WaitForExit(10000)) { $Reader.Process.Kill(); $null = $Reader.Process.WaitForExit(5000) } } catch { }
+    }
+    Remove-Item -LiteralPath $Reader.Dir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 # ------------------------------------------------------------- PresentMon
 
 function Test-PCDoctorSignedBy {

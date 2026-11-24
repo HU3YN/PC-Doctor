@@ -102,6 +102,71 @@ Describe 'Displays and monitors' {
     }
 }
 
+Describe 'Temperature driver files' {
+    BeforeAll {
+        function New-ToolsFolder([string]$InstallerText = 'installer', [string]$DllText = 'dll') {
+            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('pcd-tt-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+            New-Item -ItemType Directory -Path (Join-Path $dir 'tools/lhm') -Force | Out-Null
+            $installer = Join-Path $dir 'tools/PawnIO_setup.exe'
+            [System.IO.File]::WriteAllText($installer, 'installer')
+            $dll = Join-Path $dir 'tools/lhm/LibreHardwareMonitorLib.dll'
+            [System.IO.File]::WriteAllText($dll, 'dll')
+            $pins = [ordered]@{
+                pawnio    = [ordered]@{ version = '2.2.0.0'; file = 'PawnIO_setup.exe'; sha256 = (Get-FileHash $installer).Hash; signer = 'namazso' }
+                libraries = @([ordered]@{ id = 'librehardwaremonitorlib'; dll = 'runtimes/win-x64/lib/net472/LibreHardwareMonitorLib.dll'; dll_sha256 = (Get-FileHash $dll).Hash })
+            }
+            [System.IO.File]::WriteAllText((Join-Path $dir 'temperature-tools.json'), ($pins | ConvertTo-Json -Depth 4))
+            # The pins are of the real bytes; now make the files what the test wants.
+            if ($InstallerText -ne 'installer') { [System.IO.File]::WriteAllText($installer, $InstallerText) }
+            if ($DllText -ne 'dll') { [System.IO.File]::WriteAllText($dll, $DllText) }
+            return $dir
+        }
+    }
+    It 'uses the pinned files when every hash and the signature check out' {
+        $dir = New-ToolsFolder
+        $tools = Get-PCDoctorTemperatureTools -CollectorDir $dir -IsTrusted { param($file, $publisher) $file -and $publisher -eq 'namazso' }
+        $tools.Installer | Should -BeLike '*PawnIO_setup.exe'
+        $tools.LibraryDir | Should -BeLike '*lhm'
+        $tools.Version | Should -Be '2.2.0.0'
+        $tools.Problem | Should -BeNullOrEmpty
+    }
+    It 'uses none of them when the installer or one library is not the pinned file' {
+        Get-PCDoctorTemperatureTools -CollectorDir (New-ToolsFolder -InstallerText 'swapped') -IsTrusted { $true } | Should -BeNullOrEmpty
+        Get-PCDoctorTemperatureTools -CollectorDir (New-ToolsFolder -DllText 'swapped') -IsTrusted { $true } | Should -BeNullOrEmpty
+    }
+    It 'refuses a pinned installer whose signature is wrong, and says why' {
+        $tools = Get-PCDoctorTemperatureTools -CollectorDir (New-ToolsFolder) -IsTrusted { $false }
+        $tools.Problem | Should -Match 'valid signature from namazso'
+    }
+    It 'finds nothing in a folder without the files' {
+        $empty = Join-Path ([System.IO.Path]::GetTempPath()) ('pcd-tt-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Path $empty | Out-Null
+        Get-PCDoctorTemperatureTools -CollectorDir $empty | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Temperature reader output' {
+    It 'reads the sensors the reader wrote, in the web server shape the sample mapping takes' {
+        $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('pcd-rd-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        $reader = @{ OutFile = (Join-Path $dir 'sensors.json'); StopFile = (Join-Path $dir 'stop'); Dir = $dir; Process = $null }
+        Get-PCDoctorLhmReaderSensors -Reader $reader | Should -BeNullOrEmpty
+        $json = '[{"SensorId":"/amdcpu/0/temperature/2","Type":"Temperature","Text":"Core (Tctl/Tdie)","Value":71.5},' +
+            '{"SensorId":"/amdcpu/0/load/0","Type":"Load","Text":"CPU Total","Value":42}]'
+        [System.IO.File]::WriteAllText($reader.OutFile, $json)
+        $sensors = Get-PCDoctorLhmReaderSensors -Reader $reader
+        @($sensors).Count | Should -Be 2
+        $sample = ConvertTo-PCDoctorSample -Sensors $sensors
+        $sample['cpu_temp_c'] | Should -Be 71.5
+        $sample['cpu_load_pct'] | Should -Be 42
+        (Get-Item $reader.OutFile).LastWriteTime = (Get-Date).AddMinutes(-1)
+        Get-PCDoctorLhmReaderSensors -Reader $reader | Should -BeNullOrEmpty
+        Stop-PCDoctorLhmReader -Reader $reader
+        Test-Path $dir | Should -BeFalse
+        { Stop-PCDoctorLhmReader -Reader $null } | Should -Not -Throw
+    }
+}
+
 Describe 'ConvertTo-PCDoctorNumber' {
     It 'reads numbers, formatted values and decimal commas' {
         ConvertTo-PCDoctorNumber 45.5 | Should -Be 45.5
