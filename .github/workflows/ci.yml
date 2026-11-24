@@ -305,15 +305,21 @@ jobs:
           curl -fsS http://localhost:3000/api/health | grep -q '"database": *"ok"'
           # Prometheus loaded every rule in deploy/monitoring/alerts.yml, and each evaluates without error.
           EXPECTED=$(python3 -c 'import yaml; print(sum(len(g["rules"]) for g in yaml.safe_load(open("deploy/monitoring/alerts.yml"))["groups"]))')
-          curl -fsS http://localhost:9090/api/v1/rules > rules.json
+          # A rule reads "unknown" until its first evaluation (every minute by
+          # default), so wait for that before judging; "err" fails at once.
+          for i in $(seq 1 45); do
+            curl -fsS http://localhost:9090/api/v1/rules > rules.json
+            python3 -c 'import json,sys; r=[x for g in json.load(open("rules.json"))["data"]["groups"] for x in g["rules"]]; sys.exit(1 if any(x.get("health")=="unknown" for x in r) else 0)' && break
+            sleep 2
+          done
           python3 - "$EXPECTED" <<'PY'
           import json, sys
           expected = int(sys.argv[1])
           doc = json.load(open("rules.json"))
           assert doc["status"] == "success", doc["status"]
           rules = [r for g in doc["data"]["groups"] for r in g["rules"]]
-          bad = [r["name"] for r in rules if r.get("health") != "ok" or r.get("lastError")]
-          print(f"{len(rules)} rules loaded, {expected} expected, unhealthy: {bad}")
+          bad = [(r["name"], r.get("health"), r.get("lastError")) for r in rules if r.get("health") != "ok" or r.get("lastError")]
+          print(f"{len(rules)} rules loaded, {expected} expected, not healthy: {bad}")
           assert expected > 0 and len(rules) >= expected, (len(rules), expected)
           assert not bad, bad
           PY
