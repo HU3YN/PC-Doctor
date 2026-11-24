@@ -276,9 +276,12 @@ if ($Mode -eq 'Capture') {
             if ($useDriver) {
                 $lhmReader = Start-PCDoctorLhmReader -LibraryDir $tempTools.LibraryDir
                 $wait = [System.Diagnostics.Stopwatch]::StartNew()
-                while ($lhmReader -and -not $first -and $wait.Elapsed.TotalSeconds -lt 20) {
+                # Starting it compiles a little code, opens the hardware and
+                # reads every sensor once: allow time on a slow PC.
+                while ($lhmReader -and -not $first -and $wait.Elapsed.TotalSeconds -lt 45) {
                     Start-Sleep -Milliseconds 500
                     $first = Get-PCDoctorLhmReaderSensors -Reader $lhmReader
+                    if (-not $first -and $lhmReader.Process.HasExited) { break }
                 }
                 if ($first) {
                     $sensorSource = 'librehardwaremonitorlib'
@@ -286,7 +289,7 @@ if ($Mode -eq 'Capture') {
                     Write-PCDoctorJson -Object @{ sensors = @($first | Select-Object SensorId, Type, Text, Value) } -Path (Join-Path $runDir 'sensors_raw.json')
                     Write-Step 'Sensors: LibreHardwareMonitorLib through PawnIO'
                 } else {
-                    Add-Warning 'The temperature reader gave no sensors, so there is no CPU temperature in this run.'
+                    Add-Warning ('The temperature reader gave no sensors ({0}), so there is no CPU temperature in this run.' -f (Get-PCDoctorLhmReaderProblem -Reader $lhmReader))
                     Stop-TemperatureDriver
                 }
             }

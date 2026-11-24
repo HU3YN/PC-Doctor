@@ -1131,6 +1131,17 @@ function Test-PCDoctorPawnIOLeftBehind {
 $script:LhmReaderScript = @'
 param([string]$LibDir, [string]$OutFile, [string]$StopFile, [int]$ParentId)
 $ErrorActionPreference = 'Stop'
+trap {
+    # Why the reader stopped, for the collector's log.
+    $text = $_.Exception.GetType().FullName + ': ' + $_.Exception.Message
+    $inner = $_.Exception.InnerException
+    while ($inner) { $text += ' <- ' + $inner.GetType().FullName + ': ' + $inner.Message; $inner = $inner.InnerException }
+    if ($_.Exception -is [System.Reflection.ReflectionTypeLoadException]) {
+        $text += ' | ' + (($_.Exception.LoaderExceptions | ForEach-Object { $_.Message } | Select-Object -Unique -First 3) -join ' | ')
+    }
+    [System.IO.File]::WriteAllText($OutFile + '.error', $text)
+    exit 1
+}
 Add-Type -TypeDefinition @"
 using System; using System.IO; using System.Reflection;
 public static class PCDoctorLhmResolver {
@@ -1203,8 +1214,23 @@ function Get-PCDoctorLhmReaderSensors {
     try {
         $age = ((Get-Date) - (Get-Item -LiteralPath $Reader.OutFile).LastWriteTime).TotalSeconds
         if ($age -gt $MaxAgeSeconds) { return $null }
-        return @([System.IO.File]::ReadAllText($Reader.OutFile) | ConvertFrom-Json)
+        # Into a variable first: Windows PowerShell 5.1 passes a JSON array on
+        # as one object, and @() around the pipeline would nest it.
+        $parsed = [System.IO.File]::ReadAllText($Reader.OutFile) | ConvertFrom-Json
+        return @($parsed)
     } catch { return $null }
+}
+
+function Get-PCDoctorLhmReaderProblem {
+    # Why the reader gave nothing: the error it wrote, or that it ended.
+    param($Reader)
+    if (-not $Reader) { return 'it could not be started' }
+    $errorFile = $Reader.OutFile + '.error'
+    if (Test-Path -LiteralPath $errorFile) {
+        try { return (Protect-PCDoctorText -Text ([System.IO.File]::ReadAllText($errorFile)) -MaxLength 400) } catch { }
+    }
+    if ($Reader.Process -and $Reader.Process.HasExited) { return "it ended with exit code $($Reader.Process.ExitCode)" }
+    return 'it wrote nothing in time'
 }
 
 function Stop-PCDoctorLhmReader {

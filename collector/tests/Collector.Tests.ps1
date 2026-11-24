@@ -161,6 +161,9 @@ Describe 'Temperature reader output' {
         $sample['cpu_load_pct'] | Should -Be 42
         (Get-Item $reader.OutFile).LastWriteTime = (Get-Date).AddMinutes(-1)
         Get-PCDoctorLhmReaderSensors -Reader $reader | Should -BeNullOrEmpty
+        [System.IO.File]::WriteAllText($reader.OutFile + '.error', 'System.IO.FileNotFoundException: Could not load file or assembly HidSharp')
+        Get-PCDoctorLhmReaderProblem -Reader $reader | Should -Match 'FileNotFoundException'
+        Get-PCDoctorLhmReaderProblem -Reader $null | Should -Be 'it could not be started'
         Stop-PCDoctorLhmReader -Reader $reader
         Test-Path $dir | Should -BeFalse
         { Stop-PCDoctorLhmReader -Reader $null } | Should -Not -Throw
