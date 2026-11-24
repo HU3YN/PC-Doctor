@@ -196,6 +196,16 @@ both heavier. Needs a real AMD or Intel GPU to test; the owner's is NVIDIA.
 | GPU temperature, AMD and Intel | Windows' own adapter counters (D3DKMT `KMTQAITYPE_ADAPTERPERFDATA`) fill `gpu_temp_c` and `gpu_fan_rpm` when there is no nvidia-smi. On NVIDIA the collector logs both, for a cross-check on the owner's next capture ("GPU temperature cross-check" in collector.log). Unproven on real AMD and Intel drivers |
 | Supply chain | The API image's build backend is now hashed; nginx's error log no longer prints key-bearing request lines when the API is down; `deploy/k8s` images pinned by Compose's digests (Dependabot does not watch them: bump by hand with Compose) |
 
+### Done on 2026-11-24, fourth part
+
+| Item | What was done |
+|---|---|
+| Dependabot | Also merged #6 (nginx 1.29) and #14 (react-router) after fresh green CI. The held five (#1 Python 3.15, #3 Node 26, #5 Redis 8, #8 Prometheus 3, #10 Grafana 13) were refreshed: all pass full CI. They stay for the owner to decide (not low-risk): #1 - the API tests never run on 3.15, only the image build and smoke test; #3, #5 - green, one-way volume for #5; #8 - the new rules/dashboard checks pass on it |
+| CI | The docker job now checks that Prometheus loaded every alert rule (waiting for the first evaluation) and that Grafana provisioned the PC Doctor dashboard |
+| Overhead | Every capture records `capture.overhead` (CPU and memory of the collector, PresentMon and the temperature reader) - Phase 6's number comes from the owner's next capture |
+| Cases | `eval/make_case.py` turns a run zip into a labeled case in one command (eval/README.md has the command for the 25 October run) |
+| Release | The release workflow ran as a manual dry run (no release published): fetch, build, SHA-256 and attestation all worked; a local rebuild of the same commit gave the same SHA-256 (`4e093d64...`), and the stored attestation names this repository, the workflow and the commit. A `collector-v` tag now fails unless it matches `$script:CollectorVersion`, which is still 0.1.0: bump it as part of the release |
+
 ### Known gaps
 - **CPU temperature on real hardware is unproven:** the VM reports 0 C. The
   owner's next capture (answer y at the prompt) is the test; Memory
@@ -325,8 +335,10 @@ for load at the start. Left:
 
 ### Step 3 - With the owner's yes
 
-1. Push `collector-v1.0.0` (after Step 1, so the release includes
-   PresentMon) and check it with `gh attestation verify`.
+1. Set `$script:CollectorVersion` to 1.0.0 (the release job checks the tag
+   against it), push `collector-v1.0.0`, and check the release with
+   `gh attestation verify` on the owner's PC (this session's network cannot
+   reach Sigstore's trust root; the dry run of 2026-11-24 passed otherwise).
 2. The owner turns on private vulnerability reporting (Settings > Code
    security).
 
