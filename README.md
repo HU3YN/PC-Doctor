@@ -22,7 +22,7 @@ account yet - [what is verified](docs/results.md) and
 |  collector           | --------> |  dashboard (React + TypeScript)       |
 |  read-only PowerShell|  USB or   |     |                                 |
 |  (or the Rust        |  upload   |  API (FastAPI) -> rules engine        |
-|  capture collector)  |           |     |              (29 fault types)   |
+|  capture collector)  |           |     |              (30 fault types)   |
 |  specs, events,      |  live     |  PostgreSQL: runs, findings, work log |
 |  disks, frame times, | --------> |  optional: Go upload service, Redis   |
 |  sensors             |  NDJSON   |  queue + worker, Prometheus, Grafana  |
@@ -163,7 +163,7 @@ deletes it - use **Work log > Backup** first). Without Docker, see
 
 ## What it can find
 
-29 fault types, each with its own check ([full list and thresholds](docs/rules.md)):
+30 fault types, each with its own check ([full list and thresholds](docs/rules.md)):
 
 - **Performance:** stutter and hitches, GPU-limited and CPU-limited games
 - **Heat:** hot CPU or GPU, thermal throttling, thermal shutdowns, hot drives
@@ -173,7 +173,7 @@ deletes it - use **Work log > Backup** first). Without Docker, see
 - **Memory:** failed memory tests, single-channel RAM, XMP off, mixed kits,
   RAM or video memory running out
 - **Set-up:** missing or old graphics driver, Power saver plan, worn laptop
-  battery, firmware limiting the CPU
+  battery, a screen running below its refresh rate, firmware limiting the CPU
 
 The thresholds are sensible starting values, not measured optimums. Tuning
 them needs real, labeled faults ([fault-testing.md](docs/fault-testing.md)).

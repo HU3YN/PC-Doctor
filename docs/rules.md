@@ -37,6 +37,7 @@ A rule answers one of three ways, and the dashboard shows which:
 | `driver.gpu_missing` | Driver | No real graphics driver is installed (Microsoft Basic Display Adapter). | graphics adapters from the collector |
 | `driver.gpu_old` | Driver | The graphics driver is old. | graphics driver dates from the collector |
 | `os.power_saver_plan` | Windows / software | Windows is set to the Power saver plan, which caps CPU speed. | the active power plan from the collector |
+| `display.refresh_below_max` | Peripheral / display | A screen runs at a much lower refresh rate than it can do. | the screens and their refresh rates from the collector |
 | `power.battery_worn` | Power / PSU | The laptop battery has lost a large part of its capacity. | battery capacities from the collector |
 | `thermal.cpu_hot` | Thermal / cooling | The processor runs too hot under load. | CPU temperature from sensors |
 | `thermal.cpu_throttling` | Thermal / cooling | The processor slows itself down when it gets hot. | CPU temperature and CPU clock speed from sensors |
@@ -76,6 +77,7 @@ captures, recording the score before and after each change.
 | Low space | under 10% free, or under 15 GB on the Windows drive | |
 | RAM / VRAM full | 95% / 97%+ for the worst 5% of the run | A single momentary peak does not count |
 | Unexpected shutdowns | any is a warning; 3+ in 30 days is critical | |
+| Slow refresh rate | a higher rate is offered that is 1.2x+ and 20 Hz+ above the current one | So 59 vs 60 Hz (the same mode) never fires. If Windows offers no higher rate but the screen's own list does, the finding points at the cable or port |
 | Old graphics driver | 18+ months (info only) | Windows' own built-in drivers are skipped: they are all dated 2006-06-21 |
 
 ## Adding a rule

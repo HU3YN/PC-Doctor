@@ -13,7 +13,7 @@ can check.
 
 | Phase | What | Status | Still missing |
 |---|---|---|---|
-| 1 | Collector, 29-rule diagnosis, API, dashboard, work log, start script | Built | A capture on a real gaming PC |
+| 1 | Collector, 30-rule diagnosis, API, dashboard, work log, start script | Built | A capture on a real gaming PC |
 | 2 | AI troubleshooter (`POST /api/assist/troubleshoot`) and its scoring script (`eval/agent_eval.py`) | Built | A run against the real API; real labeled cases |
 | 3 | Go upload service, Redis queue and worker, Prometheus metrics, Grafana, alerts, k6 load test, Terraform and k3s files | Built | Terraform and k3s applied to a real AWS account; k6 numbers |
 | 4 | Discord and Google sign-in (OAuth with PKCE), member accounts, webhook, Discord bot, bot upload token | Built | Real Discord/Google apps; the bot on a moderator-approved server |

@@ -36,7 +36,7 @@ def one(findings):
 def test_rule_codes_are_unique_and_namespaced():
     rules = all_rules()
     codes = [r.code for r in rules]
-    assert len(codes) == len(set(codes)) >= 29
+    assert len(codes) == len(set(codes)) >= 30
     assert all("." in code for code in codes)
     from pcdoctor_analysis.model import CATEGORIES
 
@@ -650,6 +650,68 @@ def test_power_plan():
         "power_plan_guid": "A1841308-3541-4FAB-BC81-F71556F20B4A",
     }
     assert one(system.power_saver_plan(make_run(specs=saver), T)).code == "os.power_saver_plan"
+
+
+def _screen(refresh, offered, monitor_max=None, **extra):
+    display = {
+        "adapter": "NVIDIA GeForce RTX 5080",
+        "resolution": "2560x1440",
+        "refresh_hz": refresh,
+        "max_refresh_hz_at_resolution": offered,
+        "max_refresh_hz": offered,
+        "monitor": "Example 27Q",
+        "monitor_max_refresh_hz": monitor_max,
+    }
+    display.update(extra)
+    return make_run(specs={"displays": [display]})
+
+
+def test_refresh_rate_left_at_default():
+    finding = one(system.refresh_below_max(_screen(59, 360, 360), T))
+    assert finding.code == "display.refresh_below_max"
+    assert finding.severity == Severity.WARNING
+    assert finding.title == "Example 27Q runs at 60 Hz, but can do 360 Hz"
+    assert "Choose a refresh rate" in " ".join(finding.next_checks)
+    assert finding.evidence["refresh_hz"] == 59
+
+
+def test_refresh_rate_at_max_or_same_mode_passes():
+    assert system.refresh_below_max(_screen(60, 60), T) == []
+    assert system.refresh_below_max(_screen(59, 60), T) == []  # same mode, no false alarm
+    assert system.refresh_below_max(_screen(144, 165, 165), T) == []  # 1.15x, 21 Hz
+    assert system.refresh_below_max(_screen(100, 119), T) == []  # under 20 Hz more
+
+
+def test_refresh_rate_cable_or_port_limit():
+    finding = one(system.refresh_below_max(_screen(59, 60, 360), T))
+    assert finding.title == "Example 27Q can do 360 Hz, but Windows only offers 60 Hz"
+    assert "likely" in finding.summary
+    assert "DisplayPort" in " ".join(finding.next_checks)
+    # An EDID that lists nothing higher proves nothing.
+    assert system.refresh_below_max(_screen(59, 60, None), T) == []
+    assert system.refresh_below_max(_screen(59, 60, 60), T) == []
+
+
+def test_refresh_rate_hz_names():
+    assert system._hz_text(59) == "60 Hz"
+    assert system._hz_text(119) == "120 Hz"
+    assert system._hz_text(143) == "144 Hz"
+    assert system._hz_text(239) == "240 Hz"
+    assert system._hz_text(165) == "165 Hz"
+
+
+def test_refresh_rate_no_data():
+    assert system.refresh_below_max(make_run(), T) is None
+    assert system.refresh_below_max(make_run(specs={"displays": []}), T) is None
+    assert system.refresh_below_max(_screen(None, None), T) is None
+    assert system.refresh_below_max(_screen(59, None, 360), T) is None
+    vm = make_run(
+        specs={
+            "system": {"manufacturer": "VMware, Inc.", "model": "VMware Virtual Platform"},
+            "displays": [{"refresh_hz": 59, "max_refresh_hz_at_resolution": 360}],
+        }
+    )
+    assert system.refresh_below_max(vm, T) is None
 
 
 def test_battery_wear():

@@ -40,6 +40,16 @@ means the same as `null`.
   (medians of three readings) and `waited_seconds` (how long it waited for a
   game or stress test to start). "Busy" is a GPU at 30% or more, or a CPU at
   50% or more.
+- `specs.json` `displays` (added 2026-11-24): a list with one entry per screen
+  attached to the desktop: `adapter`, `resolution` (e.g. `2560x1440`),
+  `refresh_hz` (the current rate as an integer, the way Windows gives it - 59
+  means about 60), `max_refresh_hz_at_resolution` (the highest rate Windows or
+  the driver offers at the current resolution, or `null`), `max_refresh_hz`
+  (the highest at any resolution, or `null`), `monitor` (the model name from
+  the screen's EDID, or `null`) and `monitor_max_refresh_hz` (the highest rate
+  the EDID lists, or `null`). EDID lists are often incomplete for high refresh
+  rates, so a `null` or low value there proves nothing. `gpu[].refresh_hz`
+  stays as it was.
 
 ## sensors.csv columns
 
