@@ -176,7 +176,22 @@ cards: AMD ADL (`atiadlxx.dll`, `ADL2_OverdriveN_Temperature_Get`), Intel
 IGCL (`ControlLib.dll`, `ctlPowerTelemetryGet`) - both driver-installed,
 both heavier. Needs a real AMD or Intel GPU to test; the owner's is NVIDIA.
 
+### Done on 2026-11-24, second part (with the owner away from their PC)
+
+| Item | What was done |
+|---|---|
+| Merge | The owner said "if it works then merge it": the default branch was fast-forwarded to the tested commit (94de33b), and again at the end of this part |
+| First run, answered | 360 Hz monitor (Windows ran it at 59 Hz), USB-C drive attached, blue screen at shutdown (Step 2 below) |
+| Displays | The collector records each screen's current, offered and EDID refresh rates (`specs.displays`); rule `display.refresh_below_max` (rules 2026.11.3, 30 rules) |
+| USB drive | A disk error on a USB (or SD) drive says so, with checks for that; a USB disk error in the incident window of a 0x9F says a USB storage device failing to change power state is a common cause |
+| CPU temperature | **Built as the owner decided.** The zip carries PawnIO's installer and LibreHardwareMonitorLib 0.9.6 with 13 libraries, all pinned (`collector/temperature-tools.json`) with licences in `collector/licences/`. A capture as administrator asks (default no), installs PawnIO, reads sensors in a separate Windows PowerShell 5.1 process, and removes the driver (also on Ctrl+C; a ProgramData marker lets the next run remove one left by a closed window) |
+| Windows CI | The Windows job now installs PawnIO from the collector, reads through it and checks that nothing is left: passed. Three Windows PowerShell 5.1 problems were found and fixed on the way (a JSON array passed on as one object; `@()` around a generic list; one sensor group failing on a VM) |
+| Rust collector | `--start-presentmon` checks Intel's signature |
+
 ### Known gaps
+- **CPU temperature on real hardware is unproven:** the VM reports 0 C. The
+  owner's next capture (answer y at the prompt) is the test; Memory
+  Integrity on and anti-cheat games are untested.
 - The working branch is not merged, so Dependabot still reads the old
   `dependabot.yml` (no actions group, TypeScript 7 not ignored).
 
@@ -227,9 +242,14 @@ Frames are done (2026-11-17): PresentMon is in the zip, the game is picked
 after the capture (the busiest presenting program), and the capture waits
 for load at the start. Left:
 
-1. **The probe, on the owner's PC** (signing, blocklist, Defender and the
-   library already checked on GitHub's runner - see above; what is left: a
-   real CPU temperature, Memory Integrity, a clean uninstall). The owner runs
+1. **Built (2026-11-24).** What is left needs the owner's PC: a capture
+   with a game running, answering y to the driver question. Check
+   `sensors.csv` `cpu_temp_c` is real (a Ryzen 7 9800X3D at load: tens of
+   degrees, not 0), `capture.temperature_driver.removed` is true, and
+   Settings > Apps shows no PawnIO afterwards. If Memory Integrity is on
+   (Windows Security > Device security > Core isolation), say so. The probe
+   script (`collector/tests/Probe-CpuTemperature.ps1`) is no longer needed
+   unless the capture fails. The owner runs
    `collector\tests\Probe-CpuTemperature.ps1` in an administrator PowerShell
    and attaches `collector\runs\cpu-temperature-probe.json`. Read in it:
    the installed driver's signer and status, `protections`, `reading.error`
