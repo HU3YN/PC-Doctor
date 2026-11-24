@@ -20,6 +20,13 @@ updates:
     groups:
       dev-tools:
         dependency-type: development
+    ignore:
+      # TypeScript 7 (the native port) is outside the range typescript-eslint
+      # 8 accepts, so npm ci fails and with it the dashboard, Docker and
+      # Windows jobs (pull request #17, 2026-11-22). Take it together with a
+      # typescript-eslint that supports it.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: gomod
     directory: /upload-service
     schedule: { interval: weekly }
