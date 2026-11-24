@@ -62,8 +62,9 @@ LibreHardwareMonitor running and Options > Remote Web Server > Run switched on:
 # Start PresentMon itself and capture 5 minutes. --start-presentmon takes the exact
 # path of the PresentMon file. The collector zip has it as
 # PCDoctor-collector\tools\PresentMon-2.6.0-x64.exe; in a git checkout run
-# collector\Get-Tools.ps1 first to fetch it into collector\tools. The file is not
-# checked for a signature, so use the one from the zip or Get-Tools.ps1.
+# collector\Get-Tools.ps1 first to fetch it into collector\tools. It runs only if it carries a
+# valid Intel signature (checked on Windows, as the PowerShell collector does), so
+# use the one from the zip or Get-Tools.ps1.
 .\pcdoctor-capture.exe --process Game.exe --seconds 300 `
     --start-presentmon ..\collector\tools\PresentMon-2.6.0-x64.exe --label "bench 3"
 

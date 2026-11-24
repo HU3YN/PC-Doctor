@@ -23,6 +23,7 @@ use pcdoctor_capture::presentmon::{presentmon_arguments, version_from_file_name,
 use pcdoctor_capture::resources::{self, ResourceUsage};
 use pcdoctor_capture::run::{self, remove_if_exists};
 use pcdoctor_capture::sensors::{self, Sample};
+use pcdoctor_capture::signature::signed_by;
 use pcdoctor_capture::tail::FileTail;
 use pcdoctor_capture::winsensors::WindowsSensors;
 use pcdoctor_capture::{privacy, COLLECTOR_NAME, COLLECTOR_VERSION, SCHEMA_VERSION};
@@ -251,7 +252,7 @@ fn capture(args: &Args) -> Result<(), String> {
     };
 
     // ---- frames
-    let mut frames = open_frame_source(args, &run_dir, &mut log)?;
+    let mut frames = open_frame_source(args, &run_dir, &mut log, &presentmon_is_trusted)?;
 
     // ---- the capture loop: sample sensors on a fixed schedule, read new
     // PresentMon rows in between. One thread: nothing here is busy enough to
@@ -447,13 +448,29 @@ fn default_output_dir() -> Result<PathBuf, String> {
     Ok(dir.join("runs"))
 }
 
+/// PresentMon runs as administrator, so on Windows only a file with a valid
+/// Intel signature may be started (the PowerShell collector's check). Elsewhere
+/// nothing is checked: the signature check is Windows PowerShell's.
+fn presentmon_is_trusted(exe: &Path) -> bool {
+    !cfg!(windows) || signed_by(exe, "Intel Corporation")
+}
+
 /// Start PresentMon or open the CSV to follow, and the filtered output file.
+/// `is_trusted` decides whether the PresentMon file may be run (tests pass
+/// their own).
 fn open_frame_source(
     args: &Args,
     run_dir: &Path,
     log: &mut Log,
+    is_trusted: &dyn Fn(&Path) -> bool,
 ) -> Result<Option<FrameSource>, String> {
     let (csv_path, child, raw_csv, version) = if let Some(exe) = &args.start_presentmon {
+        if !is_trusted(exe) {
+            log.warn(
+                "The PresentMon file does not carry a valid Intel signature, so it was not run and frame times are skipped.",
+            );
+            return Ok(None);
+        }
         let raw = run_dir.join("presentmon_raw.csv");
         remove_if_exists(&raw).map_err(|e| format!("cannot clear an old PresentMon file: {e}"))?;
         let version = version_from_file_name(exe);
@@ -631,6 +648,65 @@ fn wait_or_kill(child: &mut Child, log: &mut Log) -> Option<i32> {
                 return child.wait().ok().and_then(|s| s.code());
             }
             Err(_) => return None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args_for(exe: &Path) -> Args {
+        Args::parse_from([
+            "pcdoctor-capture",
+            "--process",
+            "Game.exe",
+            "--no-sensors",
+            "--start-presentmon",
+            exe.to_str().unwrap(),
+        ])
+    }
+
+    fn new_log() -> Log {
+        Log {
+            lines: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn an_untrusted_presentmon_is_not_started() {
+        let folder = tempfile::tempdir().unwrap();
+        // A real, runnable file: only the trust decision may stop it.
+        let exe = std::env::current_exe().unwrap();
+        let mut log = new_log();
+        let source =
+            open_frame_source(&args_for(&exe), folder.path(), &mut log, &|_| false).unwrap();
+        assert!(source.is_none());
+        assert_eq!(log.warnings.len(), 1);
+        assert!(log.warnings[0].contains("does not carry a valid Intel signature"));
+        assert!(log.warnings[0].contains("not run"));
+        assert!(!folder.path().join("presentmon.csv").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_trusted_presentmon_is_started_unchanged() {
+        let folder = tempfile::tempdir().unwrap();
+        let exe = PathBuf::from("/bin/sh");
+        let asked = std::cell::RefCell::new(Vec::new());
+        let mut log = new_log();
+        let source = open_frame_source(&args_for(&exe), folder.path(), &mut log, &|path| {
+            asked.borrow_mut().push(path.to_path_buf());
+            true
+        })
+        .unwrap();
+        let mut source = source.expect("a trusted file is started");
+        assert_eq!(*asked.borrow(), vec![exe]);
+        assert!(log.warnings.is_empty());
+        if let Some(child) = source.child.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
         }
     }
 }
