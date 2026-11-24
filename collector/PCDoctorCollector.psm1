@@ -1188,7 +1188,9 @@ try {
             }
         }
         $temp = $OutFile + '.tmp'
-        [System.IO.File]::WriteAllText($temp, (ConvertTo-Json -InputObject @($sensors) -Depth 3 -Compress))
+        # ToArray, not @(): Windows PowerShell 5.1 throws "Argument types do not
+        # match" for @() around a generic list here (GitHub's runner, 2026-11-24).
+        [System.IO.File]::WriteAllText($temp, (ConvertTo-Json -InputObject $sensors.ToArray() -Depth 3 -Compress))
         Move-Item -LiteralPath $temp -Destination $OutFile -Force
         Start-Sleep -Milliseconds 900
     }
