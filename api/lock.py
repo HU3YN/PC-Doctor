@@ -1,5 +1,5 @@
-"""Regenerate api/requirements.lock: every package the Docker image installs (build backend included),
-at an exact version, with the hashes pip checks (--require-hashes).
+"""Regenerate api/requirements.lock: every package the Docker image installs
+(build backend included), at an exact version, with the hashes pip checks (--require-hashes).
 
     pip install uv && python api/lock.py
 
