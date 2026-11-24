@@ -59,7 +59,11 @@ As administrator (PresentMon needs it to record frames), with
 LibreHardwareMonitor running and Options > Remote Web Server > Run switched on:
 
 ```powershell
-# Start PresentMon itself (the one Get-Tools.ps1 fetched) and capture 5 minutes:
+# Start PresentMon itself and capture 5 minutes. --start-presentmon takes the exact
+# path of the PresentMon file. The collector zip has it as
+# PCDoctor-collector\tools\PresentMon-2.6.0-x64.exe; in a git checkout run
+# collector\Get-Tools.ps1 first to fetch it into collector\tools. The file is not
+# checked for a signature, so use the one from the zip or Get-Tools.ps1.
 .\pcdoctor-capture.exe --process Game.exe --seconds 300 `
     --start-presentmon ..\collector\tools\PresentMon-2.6.0-x64.exe --label "bench 3"
 
@@ -83,7 +87,7 @@ On the master, open **Live** in the dashboard and start a session. It shows a
 samples address once. Give it to the collector:
 
 ```
-pcdoctor-capture --process Game.exe --start-presentmon tools\PresentMon.exe --live-url https://pcdoctor.example.com/api/live/<token>/samples
+pcdoctor-capture --process Game.exe --start-presentmon tools\PresentMon-2.6.0-x64.exe --live-url https://pcdoctor.example.com/api/live/<token>/samples
 ```
 
 About once a second the collector sends the new frame times and sensor
