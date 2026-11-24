@@ -4,11 +4,12 @@ This file is the handoff between work sessions. To continue, start a session
 on this repository and say: "Read docs/plan.md and carry out 'Plan for the next
 session', starting at Step 0."
 
-## Where things stand (2026-11-17)
+## Where things stand (2026-11-24)
 
 The default branch `claude/festive-cray-nw5hzp` holds everything up to
-2026-11-15. The work of 2026-11-17 is on `claude/epic-archimedes-peiqrm`,
-not merged yet.
+2026-11-15 plus the 2026-11-17 plan update. The code of 2026-11-17 and
+2026-11-24 is on `claude/epic-archimedes-peiqrm`, CI green, **not merged
+yet** (the owner merges).
 
 Every phase of [the roadmap](roadmap.md) now has code that passes its tests
 in CI. Almost none of it has met real hardware, real photos, real accounts or
@@ -131,10 +132,20 @@ Every image bump keeps its digest pin and the action SHAs match their tags.
 - Close: #13 (TypeScript 7 is outside what the locked typescript-eslint
   accepts, `<6.1.0`); take the user-event patch separately.
 
+### Done on 2026-11-24 (the rest of Step 1's frames half)
+
+| Item | What was done |
+|---|---|
+| Actions | Running again (the block of 2026-11-15 to about 2026-11-22 lifted by itself or by the owner). Every `ci` and `security` job passed on the working branch, both Windows jobs included |
+| Windows | The real Windows runner fetched PresentMon (SHA-256 and Intel signature checked), and the load check flagged the idle runner at the start ("GPU 14%, CPU 5%") and recorded it, without waiting (non-interactive) |
+| Bundling | Finished and checked: the zip builds the same twice (SHA-256 `276d2861...` for this commit's collector), the API image fetches PresentMon, `Start-PCDoctor.ps1` fetches it without Docker. The Get page no longer claims a zip without PresentMon matches the release |
+| Rust collector | `--start-presentmon` runs only a file with a valid Intel signature (`src/signature.rs`, shared with nvidia-smi); docs name the real file `PresentMon-2.6.0-x64.exe`. Not yet tried against the real PresentMon on Windows |
+| Docs | collector README, README, privacy (the one github.com download), testing, roadmap, SECURITY; threat-model tables now agree with the fixed items (item #14 corrected: `POSTGRES_PASSWORD` still defaults to `pcdoctor`) |
+| Dependabot | #13 was replaced by #17 (dev-tools, 7 updates), which fails: TypeScript 7 vs typescript-eslint 8 (`npm ci` ERESOLVE). Major TypeScript updates are now ignored; Dependabot should regroup #17 without it once this branch is on the default branch. New: #14-#16 (patch/minor web libraries) |
+
 ### Known gaps
-- **GitHub Actions is not starting jobs** (see above). Nothing pushed since
-  2026-11-15 has a CI result; the Windows jobs are the only Windows this
-  project has without the owner's PC.
+- The working branch is not merged, so Dependabot still reads the old
+  `dependabot.yml` (no actions group, TypeScript 7 not ignored).
 
 - The owner's PC has run a quick check and an idle capture. A capture with
   the **current** collector, PresentMon and LibreHardwareMonitor, while a
@@ -161,14 +172,16 @@ three findings by commit SHA.
 
 ### Step 0 - Confirm the starting point
 
-1. `git pull`; look at the latest `ci` and `security` runs. **If runs still
-   fail within seconds with no log, Actions is still blocked** (see "Done on
-   2026-11-17"): tell the owner first, and until it is fixed test locally
-   and say in each commit what was and was not run. Once Actions works, the
-   first run on this work is the first time any of it meets Windows: read
-   the two Windows jobs closely.
-2. Dependabot: follow the list under "Dependabot pull requests" above.
-3. Ask the owner whether there is anything else to change (asked on
+1. `git pull`; check the latest `ci` and `security` runs. If runs fail
+   within seconds with no log, Actions is blocked again (as from 2026-11-15
+   to about 2026-11-22): tell the owner, test locally meanwhile, and say in
+   each commit what was and was not run.
+2. Ask the owner to merge `claude/epic-archimedes-peiqrm` into the default
+   branch (CI green on 2026-11-24), so Dependabot picks up its new config.
+3. Dependabot: follow the list under "Dependabot pull requests" above; #14,
+   #15, #16 are patch/minor web updates (merge when green); #17 should come
+   back without TypeScript 7.
+4. Ask the owner whether there is anything else to change (asked on
    2026-11-17; the answer was the CPU temperature decision only).
 
 ### Step 1 - Convenience: what is left
