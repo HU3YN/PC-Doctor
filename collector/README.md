@@ -102,6 +102,10 @@ window is closed mid-capture, a marker file
 as administrator remove it. The manifest records what happened in
 `capture.temperature_driver`.
 
+Every capture also measures its own cost (CPU time and memory of the
+collector, PresentMon and the temperature reader) and prints it at the end; it
+is recorded in `capture.overhead`.
+
 To remove it by hand: Settings > Apps > Installed apps > PawnIO > Uninstall.
 
 Not yet proven on a real PC: a real CPU temperature reading, Memory Integrity

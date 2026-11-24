@@ -1642,4 +1642,71 @@ function Get-PCDoctorResultLink {
     return $null
 }
 
+function Get-PCDoctorProcessUsage {
+    # CPU seconds used so far and the peak working set of one process, or $null
+    # when it cannot be read. An exited process still answers if its handle was
+    # kept (the caller touched .Handle while it ran). Never throws.
+    [CmdletBinding()]
+    param($Process)
+    if (-not $Process) { return $null }
+    $cpu = $null
+    $peak = $null
+    try { $cpu = [double]$Process.TotalProcessorTime.TotalSeconds } catch { }
+    try { $peak = [double]$Process.PeakWorkingSet64 } catch { }
+    if ($null -eq $cpu) { return $null }
+    return [pscustomobject]@{ CpuSeconds = $cpu; PeakWorkingSetBytes = $peak }
+}
+
+function ConvertTo-PCDoctorOverheadEntry {
+    # One process's cost over the capture: CPU seconds, average % of one core,
+    # average % of the whole CPU, peak memory. $null when the end reading is missing.
+    [CmdletBinding()]
+    param(
+        $StartCpuSeconds,
+        $EndCpuSeconds,
+        [double]$Seconds,
+        [int]$ProcessorCount,
+        $PeakWorkingSetBytes
+    )
+    if ($null -eq $EndCpuSeconds) { return $null }
+    $start = $(if ($null -eq $StartCpuSeconds) { 0.0 } else { [double]$StartCpuSeconds })
+    $used = [math]::Max(0.0, ([double]$EndCpuSeconds) - $start)
+    $cores = [math]::Max(1, $ProcessorCount)
+    $corePct = 0.0
+    if ($Seconds -gt 0) { $corePct = 100.0 * $used / $Seconds }
+    $peakMb = $null
+    if ($null -ne $PeakWorkingSetBytes -and [double]$PeakWorkingSetBytes -gt 0) { $peakMb = [math]::Round(([double]$PeakWorkingSetBytes) / 1MB, 2) }
+    return [ordered]@{
+        cpu_seconds         = [math]::Round($used, 2)
+        avg_core_pct        = [math]::Round($corePct, 2)
+        avg_total_pct       = [math]::Round($corePct / $cores, 2)
+        peak_working_set_mb = $peakMb
+    }
+}
+
+function ConvertTo-PCDoctorOverhead {
+    # The manifest's capture.overhead from per-process entries (each from
+    # ConvertTo-PCDoctorOverheadEntry, or $null when that process was not there).
+    [CmdletBinding()]
+    param(
+        [double]$Seconds,
+        [int]$ProcessorCount,
+        $Collector,
+        $PresentMon,
+        $TemperatureReader
+    )
+    $total = 0.0
+    foreach ($entry in @($Collector, $PresentMon, $TemperatureReader)) {
+        if ($entry) { $total += [double]$entry.avg_total_pct }
+    }
+    return [ordered]@{
+        seconds             = [math]::Round([math]::Max(0.0, $Seconds), 1)
+        logical_processors  = [math]::Max(1, $ProcessorCount)
+        collector           = $Collector
+        presentmon          = $PresentMon
+        temperature_reader  = $TemperatureReader
+        total_avg_total_pct = [math]::Round($total, 2)
+    }
+}
+
 Export-ModuleMember -Function *-PCDoctor*

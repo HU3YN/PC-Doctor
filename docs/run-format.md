@@ -68,6 +68,13 @@ means the same as `null`.
 
 Decimals always use a dot. Readings outside a sane range (a temperature of 0
 or 255) are ignored by the analyzer.
+- `manifest.json` `capture.overhead` (added 2026-11-24): what the collector
+  itself cost during the capture. `seconds` (the capture's actual length),
+  `logical_processors`, then `collector`, `presentmon` and `temperature_reader`
+  (each `null` when that process was not running), each with `cpu_seconds`,
+  `avg_core_pct` (average % of one core), `avg_total_pct` (average % of the
+  whole CPU) and `peak_working_set_mb` (`null` if unreadable); and
+  `total_avg_total_pct`, the three `avg_total_pct` added up.
 
 ## Changing the format
 

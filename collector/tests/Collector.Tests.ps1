@@ -591,3 +591,34 @@ Describe 'Reading this PC' {
         Get-PCDoctorLhmSensors -Url 'http://localhost:59999' -TimeoutSec 1 | Should -BeNullOrEmpty
     }
 }
+
+Describe 'ConvertTo-PCDoctorOverhead' {
+    It 'turns CPU seconds into percent of one core and of the whole CPU' {
+        $e = ConvertTo-PCDoctorOverheadEntry -StartCpuSeconds 1.0 -EndCpuSeconds 4.0 -Seconds 60 -ProcessorCount 4 -PeakWorkingSetBytes (50MB)
+        $e.cpu_seconds | Should -Be 3
+        $e.avg_core_pct | Should -Be 5
+        $e.avg_total_pct | Should -Be 1.25
+        $e.peak_working_set_mb | Should -Be 50
+    }
+    It 'gives zero percent for zero seconds and no memory when unreadable' {
+        $e = ConvertTo-PCDoctorOverheadEntry -StartCpuSeconds 0 -EndCpuSeconds 2 -Seconds 0 -ProcessorCount 4 -PeakWorkingSetBytes $null
+        $e.avg_core_pct | Should -Be 0
+        $e.avg_total_pct | Should -Be 0
+        $e.peak_working_set_mb | Should -BeNullOrEmpty
+    }
+    It 'returns nothing for a process that was not there' {
+        ConvertTo-PCDoctorOverheadEntry -StartCpuSeconds 0 -EndCpuSeconds $null -Seconds 10 -ProcessorCount 4 | Should -BeNullOrEmpty
+    }
+    It 'adds the processes that exist and leaves missing ones null' {
+        $c = ConvertTo-PCDoctorOverheadEntry -StartCpuSeconds 0 -EndCpuSeconds 1 -Seconds 10 -ProcessorCount 4 -PeakWorkingSetBytes 1MB
+        $p = ConvertTo-PCDoctorOverheadEntry -StartCpuSeconds 0 -EndCpuSeconds 2 -Seconds 10 -ProcessorCount 4 -PeakWorkingSetBytes 1MB
+        $o = ConvertTo-PCDoctorOverhead -Seconds 10 -ProcessorCount 4 -Collector $c -PresentMon $p -TemperatureReader $null
+        $o.logical_processors | Should -Be 4
+        $o.temperature_reader | Should -BeNullOrEmpty
+        $o.total_avg_total_pct | Should -Be 7.5
+    }
+    It 'reads the current process without throwing and survives null' {
+        (Get-PCDoctorProcessUsage -Process ([System.Diagnostics.Process]::GetCurrentProcess())).CpuSeconds | Should -BeGreaterOrEqual 0
+        Get-PCDoctorProcessUsage -Process $null | Should -BeNullOrEmpty
+    }
+}
