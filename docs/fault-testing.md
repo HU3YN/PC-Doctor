@@ -53,6 +53,12 @@ customer's on them.
 5. Run `python eval/run_eval.py --real-only` and record the score in
    [results.md](results.md).
 
+Faster: once you have the run zip, `python eval/make_case.py run.zip --name <case> --expect <code>`
+does step 4 above in one command (validates the zip, refuses names, emails and
+serial numbers, checks the codes, writes the folder and `label.json`, and
+prints the first score). The exact command for a disk-error plus blue-screen
+run is in [eval/README.md](../eval/README.md) under "Add a real case".
+
 Before committing a case, read its files once: they must contain no names and
 no serial numbers (the collector's own test checks this, but you are the last
 check).
