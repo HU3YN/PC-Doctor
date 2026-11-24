@@ -38,7 +38,7 @@ cannot.
 | Diagnosis scoring | `python eval/run_eval.py` (`--real-only` once real cases exist) | - |
 | Photo reader scoring | `python eval/photo_eval.py` (needs `eval/photos/labels.csv`); `--synthetic 40` for a plumbing check | `pytest eval/tests -q` |
 | Fuzz tests | Long run: `PCDOCTOR_FUZZ_PROFILE=long pytest -c fuzz/pytest.ini fuzz` (Windows: `$env:PCDOCTOR_FUZZ_PROFILE="long"` first) | Short run: `pytest -c fuzz/pytest.ini fuzz` |
-| Collector release | Push a tag: `git tag collector-v1.0.0 && git push origin collector-v1.0.0` (or "Run workflow" on `release collector` to build and attest without a release) | `gh attestation verify PCDoctor-collector.zip --repo HU3YN/PC-Doctor`; the zip's SHA-256 equals the one on the Get page of a server at the same commit |
+| Collector release | Push a tag: `git tag collector-v1.0.0 && git push origin collector-v1.0.0` (or "Run workflow" on `release collector` to build and attest without a release) | `gh attestation verify PCDoctor-collector.zip --repo HU3YN/PC-Doctor`; the zip's SHA-256 equals the one on the Get page of a server at the same commit (a server that has the pinned PresentMon, as the Docker image does) |
 | Python lock file (Docker image) | After changing a dependency in `api/pyproject.toml`: `pip install uv && python api/lock.py`, commit `api/requirements.lock` | `pytest api/tests/test_lock.py -q` |
 | Security checks | - | `pip-audit --skip-editable`, `npm --prefix web audit --omit=dev`, `govulncheck ./...` in `upload-service`, `gitleaks git .` - all run weekly in `.github/workflows/security.yml` |
 
@@ -52,11 +52,17 @@ benchmark it.
 ## What only the owner can prove
 
 CI has no real game, no display, no phone, no ESP32 and none of the owner's
-accounts. Each of these is untested until the owner does it:
+accounts. Each of these is untested until the owner does it. The bundled
+PresentMon, the automatic fetch and the load check have so far only been
+through the unit tests and the script analyzer (Pester and PSScriptAnalyzer
+on Linux, and the Python tests); none of the three has run on Windows yet.
 
 | What | Where | How to know it worked |
 |---|---|---|
-| A capture on a real gaming PC | Your PC, with PresentMon and LibreHardwareMonitor | The run shows frame-time and temperature charts and no "could not be read" notes |
+| A capture on a real gaming PC | Your PC, with the collector zip from a release or a server (PresentMon is inside) and LibreHardwareMonitor running | The run shows frame-time and temperature charts and no "could not be read" notes |
+| The bundled PresentMon runs | Same, straight from the unpacked zip, with no internet | `collector.log` names `tools\PresentMon-2.6.0-x64.exe`; no warning about its signature; `presentmon.csv` has rows |
+| The load check waits when no game is running | Your PC: start a capture on an idle desktop, then start a game | It says nothing seems to be running and waits; the capture begins by itself once the game is under load; the manifest's `capture.load_at_start` has `busy: true` and `waited_seconds` above 0. Also try Enter (captures anyway) and leaving it idle for 3 minutes (the run carries the idle warning) |
+| A git copy fetches PresentMon by itself | A PC with internet and a git checkout (no `collector\tools` folder): start a capture | The collector says it is fetching PresentMon, `tools\PresentMon-2.6.0-x64.exe` appears, and the run has frame times. With `-NoDownload`, or offline, the capture runs without frame times and says so |
 | LibreHardwareMonitor sensor names on real hardware | Same | `sensors.csv` has CPU and GPU temperature columns filled in |
 | The Rust collector against the PowerShell one | Same PC, same game, same length | Both runs diagnose the same; record each collector's CPU time and memory in [results.md](results.md) |
 | Live view from a real PC | Master and a second PC on your network | The Live page updates while the game runs |
@@ -67,7 +73,7 @@ accounts. Each of these is untested until the owner does it:
 | Discord and Google sign-in | Your Discord and Google developer apps | Sign in, then check **Account** shows the identity |
 | The Discord bot | A server whose moderators approved it | `/diagnose` with a run zip replies with a summary |
 | The start script's Docker route | Windows with Docker Desktop | `Start-PCDoctor.cmd` opens the dashboard |
-| The first collector release | Push a `collector-v...` tag | The release has the zip and its hash, and `gh attestation verify` passes |
+| The first collector release | Push a `collector-v...` tag | The release has the zip and its hash, `gh attestation verify` passes, and the zip contains `tools/PresentMon-2.6.0-x64.exe` and `PresentMon-LICENSE.txt` |
 | The Rust collector's Windows-counter fallback | Your PC with LibreHardwareMonitor closed | `sensors.csv` has CPU load, speed, RAM and GPU load; the manifest says `"source": "windows"` |
 | Cloud hosting | An AWS account and a domain, HTTPS only | [deploy/README.md](../deploy/README.md) section 3 |
 | k6 throughput | Your PC or the cloud server | Record requests per second and error rate at a stated load |

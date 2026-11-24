@@ -34,7 +34,9 @@ account yet - [what is verified](docs/results.md) and
 1. **Collect.** Copy the [`collector`](collector/) folder to the PC (a USB
    stick works) and double-click `PCDoctor.cmd`. A quick health check takes
    about 20 seconds; a performance capture runs for 5 minutes while a game or
-   stress test is going. It writes one zip file. It changes nothing on the PC.
+   stress test is going (if nothing is running it says so and waits for you
+   to start one). The collector download includes Intel's PresentMon for
+   frame times. It writes one zip file. It changes nothing on the PC.
 2. **Diagnose.** Drop the zip on the dashboard. You get a verdict, each
    problem in plain English with the numbers behind it and the next checks in
    order, frame-time and temperature charts, and a list of what was checked

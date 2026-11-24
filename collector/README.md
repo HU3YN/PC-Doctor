@@ -7,14 +7,17 @@ is changed. It works from a USB stick, with no internet, on any Windows 10 or
 
 ## Use it
 
-1. Copy this `collector` folder to the PC (or a USB stick).
+1. Copy this `collector` folder to the PC (or a USB stick). The zip from a
+   release or from a PC Doctor server is this folder with PresentMon already
+   inside.
 2. Double-click **`PCDoctor.cmd`**. Windows asks for administrator rights -
    needed for disk health counters and frame times.
 3. Choose:
    - **Quick health check** (about 20 seconds): specs, crash and hardware
      events from the last 30 days, disk health.
    - **Performance capture** (5 minutes): the same, plus frame times and
-     sensor readings while a game or stress test runs.
+     sensor readings while a game or stress test runs. Start the game first.
+     If nothing is running, the collector says so and waits (see below).
 4. Drop the `PCDoctor-run-....zip` from the `runs` folder onto the dashboard.
 
 Windows may warn about a downloaded script the first time ("Windows protected
@@ -43,19 +46,55 @@ Get-FileHash .\PCDoctor-collector.zip -Algorithm SHA256
 ```
 
 A PC Doctor server serves the same bytes for the same version, and its **Get
-the collector** page shows the hash. PresentMon is a separate download; the
-collector runs it only if it carries Intel's signature.
+the collector** page shows the hash. (A server that does not have PresentMon
+offers a zip without it, with a different hash; the page says so.)
+
+The zip contains one program that is not ours: Intel's PresentMon, as
+`tools\PresentMon-2.6.0-x64.exe`, unmodified, with Intel's licence (MIT) in
+`PresentMon-LICENSE.txt`. The build puts it in only if its SHA-256 is the one
+pinned in `Get-Tools.ps1`, and the collector runs it only if it carries
+Intel's signature.
 
 ## For a capture: two free tools
 
 | For | Tool | Set-up |
 |---|---|---|
-| Frame times | Intel PresentMon | Run `Get-Tools.ps1` once on a PC with internet. It downloads one file into `tools\`, checks its SHA-256 and Intel's signature, and it then travels with the folder |
+| Frame times | Intel PresentMon | None: it is in the zip. A copy without it (a git checkout) fetches it at the first capture - see below |
 | Temperatures | LibreHardwareMonitor | Download it yourself, run it, and switch on **Options > Remote Web Server > Run**. Leave it running during the capture |
+
+An NVIDIA card's temperature needs nothing extra (it comes from the signed
+`nvidia-smi` that the driver installs). CPU temperature needs
+LibreHardwareMonitor. A way to read CPU temperature with nothing to start by
+hand is being tested (see [docs/plan.md](../docs/plan.md)).
 
 Without them a capture still records what Windows itself can report (CPU and
 GPU load, CPU speed, RAM use, and an NVIDIA card's temperature and power) and
 says clearly what is missing.
+
+### When PresentMon is not in the folder
+
+A copy from git has no `tools\PresentMon-...-x64.exe`. At the first capture
+the collector runs `Get-Tools.ps1` itself: one download from github.com
+(Intel's release), kept only if its SHA-256 is the pinned one and it carries
+Intel's signature, given up after 60 seconds. The file stays in `tools\` and
+travels with the folder. With no internet the capture goes ahead without
+frame times and says so. `-NoDownload` switches the download off. You can
+still run `Get-Tools.ps1` by hand beforehand, but you do not have to.
+
+### What happens when a capture starts
+
+After the countdown the collector takes three load readings. The PC counts as
+under load when the graphics card is at 30% or more, or the CPU at 50% or
+more (the middle reading of the three). If it is idle, the collector says so
+and waits up to 3 minutes for a game or stress test to start; press Enter to
+capture anyway. If the PC is still idle, the run carries a warning, because
+the performance checks then have nothing to judge. With `-NonInteractive`
+nothing waits. The readings are saved in `manifest.json` under
+`capture.load_at_start`.
+
+You do not pick the game. After the capture, the collector keeps the frames
+of the busiest program on screen that is not part of the Windows shell
+(`-Process game.exe` names it yourself).
 
 ## From the command line
 
@@ -63,6 +102,7 @@ says clearly what is missing.
 .\Collect-PCDoctor.ps1 -Mode Quick
 .\Collect-PCDoctor.ps1 -Mode Capture -Seconds 300 -Label "after repaste" -Process game.exe
 .\Collect-PCDoctor.ps1 -Mode Quick -UploadUrl http://192.168.1.20:8080   # send it straight to the dashboard
+.\Collect-PCDoctor.ps1 -Mode Capture -NoDownload                         # never fetch PresentMon, even if it is missing
 Get-Help .\Collect-PCDoctor.ps1 -Full
 ```
 

@@ -10,6 +10,10 @@ source and short, so you can check every line of it:
 It changes no settings, installs no drivers and no software, and runs no
 fixes. It reads, and writes its findings to one folder.
 
+The collector download carries one program that is not ours: Intel's
+PresentMon, unmodified, in its `tools` folder. It is run from there during a
+capture and is not installed.
+
 ## What it reads
 
 | What | Where from | Why |
@@ -49,6 +53,23 @@ name and the current user name are replaced with placeholders.
 This is tested, not just promised: on every change, CI runs the collector on a
 real Windows machine and fails if the computer name, the user name or a serial
 number appears anywhere in the output (`collector/tests/Invoke-IntegrationTest.ps1`).
+
+## What goes over the network
+
+The collector download from a release or a PC Doctor server fetches nothing
+from the internet. (It talks to the network only to upload a run to your
+PC Doctor server, when you give it one.)
+
+There is one case where the checked PC makes a request by itself. A copy of
+the collector without PresentMon (a git checkout) fetches it at the first
+capture: one download from github.com, kept only if it is the exact file
+expected (pinned SHA-256) and Intel signed it. The request sends nothing
+about the PC. GitHub sees the PC's IP address, as it does for any download.
+`-NoDownload` switches this off; the capture then has no frame times.
+
+The master computer makes the same one download when `Start-PCDoctor.cmd`
+starts it without Docker (or when its Docker image is built), so that the
+collector it offers has PresentMon inside.
 
 ## What is uploaded
 

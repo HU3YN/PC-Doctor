@@ -68,8 +68,9 @@ one change to make on your own for each.
 
 ## What each phase needs next
 
-- **Phase 1:** run a capture on your own PC with PresentMon and
-  LibreHardwareMonitor. Fix whatever the real hardware shows. Record it in
+- **Phase 1:** run a capture on your own PC with a game running and
+  LibreHardwareMonitor (PresentMon is in the collector zip). Fix whatever
+  the real hardware shows. Record it in
   [results.md](results.md).
 - **Phase 2:** 20+ real labeled cases ([fault-testing.md](fault-testing.md))
   before trusting any accuracy number. Score the troubleshooter with a

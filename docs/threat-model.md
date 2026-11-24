@@ -44,7 +44,7 @@ HTTPS. The threat model is written for those three set-ups:
 | **Someone on the same LAN** | In LAN mode: everything a guest can, plus watch and change plain-HTTP traffic (ARP spoofing, a rogue Wi-Fi access point) | - |
 | **Internet attacker** (cloud set-up, or a LAN set-up port-forwarded by mistake) | Everything a guest can, from many addresses; password guessing; resource exhaustion | - |
 | **A malicious file** (run zip, CSV, photo) | Reaches the zip reader, the CSV/JSON parsers, the rules engine, Pillow, Tesseract, and (as text) the Discord webhook and the AI prompts | Write outside the temp folder, exhaust memory/disk, run code |
-| **A compromised dependency** | Python (unpinned ranges), npm (lockfile), Go (`go.sum`), base images and GitHub Actions (tags), PresentMon (hash + signature checked) | - |
+| **A compromised dependency** | Python (unpinned ranges), npm (lockfile), Go (`go.sum`), base images and GitHub Actions (tags), PresentMon (shipped inside the collector zip; SHA-256 pinned at build, Intel signature checked at run time) | - |
 
 ## 3. Entry points
 
@@ -77,7 +77,7 @@ callback, which is guarded by `state`.
 | **Run reading** `GET /api/runs...`, `PATCH`, `DELETE`, `/download`, `/reanalyze` | Guests or members reading or changing runs | All `Master`. `download_run` serves `runs_dir / run.file_name`, a name the server made (`{id}.zip`). | - |
 | **Member runs** `/api/me/runs...` | A member reading another member's run, or guessing run ids | `own_run` checks `owner_id` and answers 404 (not 403) for someone else's run. `my_run` strips `similar_cases`, `work_log` and `notes`. | - |
 | **Share links** `GET /api/shared/{key}`, `/series` | Guessing keys; seeing more than one run | `run_for_key` looks up the SHA-256 of a 256-bit key; `read_shared_run` strips work log, similar cases and notes. | No expiry and no revoke for a share key (deleting the run is the only way). Keys sit in URL paths, so they end up in nginx and uvicorn access logs. |
-| **Collector download** `GET /api/collector.zip`, `GET /api/collector` (`routers/intake.py`) | A tampered collector, run as administrator | `collector_zip` ships only the files in `COLLECTOR_FILES` plus `tools/PresentMon*.exe`. | **No integrity check end to end**: served over plain HTTP in LAN mode (anyone on the LAN can swap it), no published hash, no signature. `collector_zip` ships whatever `PresentMon*.exe` is in the server's `tools/` folder without re-checking the hash or signature that `Get-Tools.ps1` checked when it fetched it. The zip is rebuilt on every request (current timestamps), so it has no stable hash to publish. `GET /api/collector` tells anyone the server's LAN address (`lan_addresses`). See section 5. |
+| **Collector download** `GET /api/collector.zip`, `GET /api/collector` (`routers/intake.py`) | A tampered collector, run as administrator | `collector_zip` ships only the files in `COLLECTOR_FILES` plus the one PresentMon that `Get-Tools.ps1` pins (`collector_build.py:trusted_tools`: that file name, with that SHA-256, checked again on every build; anything else in `tools/` is left out). The zip is built reproducibly, so it has a stable hash, shown by `GET /api/collector` and on the release (item #1, section 5). | Served over plain HTTP in LAN mode (anyone on the LAN can swap it), and the hash only helps someone who compares it with GitHub. **The zip now carries a third-party executable that the collector runs as administrator** (Intel's PresentMon, unmodified): whoever can change both the pin in `Get-Tools.ps1` and the file gets admin code on every PC checked, the same door as changing the scripts. A server without the pinned file serves the scripts alone, with a different hash from the release. `GET /api/collector` tells anyone the server's LAN address (`lan_addresses`). See section 5. |
 | **Photo inbox: phone side** `GET /api/photo-links/{token}`, `POST /api/photo-links/{token}/photos` (`routers/inbox.py`) | Reading photos; flooding the inbox; malicious images; location data in photos | Links are made by the master only (`create_link`), 256-bit, hash stored, 12-hour expiry checked in `link_for`. The phone side can only add; it answers `{"received": true}`. 30 photos/hour per client (`guest_uploads` with a `photo:` key). Each photo is decoded and re-encoded to plain JPEG before it is stored (`services/photo.py:to_jpeg`), which drops EXIF/GPS; `MAX_PIXELS` and a 25 MB cap. | `send_photo` is `async def` and runs Pillow and Tesseract synchronously: one photo can block the API for up to `OCR_SECONDS` (40 s in the current working tree). No way to revoke a link before its 12 hours are up. Pillow opens any format it knows, not only JPEG/PNG; images between 40 M and 80 M pixels only raise a warning and are decoded (Pillow's bomb error starts at 2x `MAX_IMAGE_PIXELS`). The token is in the URL path (`/snap/<token>`), so it is in access logs. |
 | **Photo inbox: master side** `/api/inbox...`, `POST /api/photos` (OCR without storing) | Others reading photos | All `Master`; `photo_image` serves a server-made file name. | `read_photo` also runs OCR synchronously inside `async def`. |
 | **Work log** `/api/worklog...` (`routers/worklog.py`) | Anyone reading or importing | The whole router has `dependencies=[Depends(require_master)]`. Entries that look like they hold personal data are flagged (`services/privacy.py:privacy_warnings`). | `import_entries` takes an unbounded JSON body (master only). |
@@ -143,7 +143,7 @@ CI checks real output for the computer name, user name and serial numbers
 | Entry point | Threats | Mitigation that exists | Still open |
 |---|---|---|---|
 | Running it (`PCDoctor.cmd` -> `Collect-PCDoctor.ps1`) | A tampered script runs as administrator | Read-only by design; open source and short. | `PCDoctor.cmd` asks for administrator rights and runs PowerShell with `-ExecutionPolicy Bypass`, so whatever is in the folder runs elevated. Nothing checks that the folder is the published one (section 5). |
-| PresentMon (`Get-Tools.ps1`, `Find-PCDoctorPresentMon`) | A swapped `PresentMon*.exe` run as administrator | `Get-Tools.ps1` checks the download's SHA-256 against a pinned value **and** that it has a valid Authenticode signature from Intel Corporation, and deletes it otherwise. | `Find-PCDoctorPresentMon` runs **any** `PresentMon*.exe` in `tools/` (the highest-sorting name wins) without checking hash or signature again, and falls back to `PresentMon.exe` on the `PATH`. `Find-PCDoctorNvidiaSmi` also looks on the `PATH` first. Both run elevated, so a user-writable PATH folder can plant a program that gets admin rights. |
+| PresentMon (bundled in `tools/`; `Get-Tools.ps1`, `Find-PCDoctorPresentMon`) | A swapped `PresentMon*.exe` run as administrator; a download made by the checked PC | The zip carries the pinned PresentMon (3.4). A copy without it (a git checkout) fetches it at the first capture: `Collect-PCDoctor.ps1` calls `Get-Tools.ps1`, which downloads over HTTPS from github.com with a 60-second timeout, checks the SHA-256 against the pinned value **and** that the file has a valid Authenticode signature from Intel Corporation, and deletes it otherwise. `-NoDownload` turns the fetch off. At run time `Find-PCDoctorPresentMon` and `Find-PCDoctorNvidiaSmi` run only a file with a valid Intel / NVIDIA signature and skip the `PATH` when elevated (item #2). | The run-time check is the signature only, not the pinned hash: a different Intel-signed PresentMon build placed in `tools/` would run. The automatic fetch is a network request from the checked PC, made while elevated; it sends nothing about the PC, but GitHub sees its IP address. The bundled file, the fetch and the load check have not been run on Windows yet. Was (fixed, item #2): any `PresentMon*.exe` in `tools/` ran without a check, with a `PATH` fallback. |
 | `-UploadUrl` (`Send-PCDoctorRun`) | The run read or changed in transit; a hostile server | The server treats it as an untrusted upload (3.1). The answer is only displayed. | Plain HTTP in LAN mode (the dashboard's own hint is `PCDoctor.cmd -UploadUrl http://...`). `Collect-PCDoctor.ps1` builds the link from the server's `share_key` without checking its format and opens it with `Start-Process` **from the elevated process**, so the browser can start with administrator rights. |
 | LibreHardwareMonitor at `http://localhost:8085` (`Get-PCDoctorLhmSensors`) | A local program serving fake sensor data | Data only; parsed into numbers. | Fake data gives a wrong diagnosis (no security impact beyond that). |
 
@@ -153,7 +153,7 @@ CI checks real output for the computer name, user name and serial numbers
 |---|---|---|
 | Exposure | Compose binds nginx to `127.0.0.1` unless `PCDOCTOR_BIND` is set; Postgres and Redis are not published; the scale add-ons bind to `127.0.0.1`. Terraform opens 80/443 to all, SSH and 6443 to `admin_cidr` only, encrypted disk, IMDSv2. k8s: HTTPS only, cert-manager, security headers, `runAsNonRoot`, dropped capabilities, `readOnlyRootFilesystem` on the upload service. | Never applied to a real cluster or AWS account. No NetworkPolicy. LAN mode is plain HTTP by design. (The out-of-date LAN warning in `Start-PCDoctor.ps1` was fixed on 2026-11-14.) |
 | Default secrets | `.env` is git-ignored; k8s reads the `pcdoctor-secrets` Secret, created by hand. | Defaults when unset: `POSTGRES_PASSWORD=pcdoctor`, `GRAFANA_PASSWORD=pcdoctor` (localhost only), `PCDOCTOR_METRICS_TOKEN=local-metrics` (reachable through nginx). The setup code also shows in `docker compose logs`. |
-| Supply chain | `package-lock.json`, `go.sum`; `Get-Tools.ps1` pins PresentMon; `.github/dependabot.yml` exists; containers run as non-root (`api/Dockerfile`, `upload-service/Dockerfile`). | Python dependencies are lower bounds only (`api/pyproject.toml`), with no lock file, so a Docker build today can pull a different version than yesterday. Base images and GitHub Actions are pinned by tag, not digest/SHA. `.github/workflows/security.yml` (added 2026-11-14) runs pip-audit, npm audit, govulncheck and gitleaks on every push and weekly; it found Go 1.26.0 standard-library vulnerabilities, fixed by pinning `toolchain go1.26.11`. |
+| Supply chain | `package-lock.json`, `go.sum`; `Get-Tools.ps1` pins PresentMon, and the release workflow and `api/Dockerfile` fetch it with `collector_build.py fetch-presentmon`, which keeps it only if its SHA-256 is the pinned one; `.github/dependabot.yml` exists; containers run as non-root (`api/Dockerfile`, `upload-service/Dockerfile`). | Python dependencies are lower bounds only (`api/pyproject.toml`), with no lock file, so a Docker build today can pull a different version than yesterday. Base images and GitHub Actions are pinned by tag, not digest/SHA. `.github/workflows/security.yml` (added 2026-11-14) runs pip-audit, npm audit, govulncheck and gitleaks on every push and weekly; it found Go 1.26.0 standard-library vulnerabilities, fixed by pinning `toolchain go1.26.11`. |
 
 ### 3.9 Added after the first version: live sessions and build comparison
 
@@ -172,8 +172,8 @@ each with a test; they stay in the table so the history is visible.
 
 | # | Item | Where | Set-up | Why this rank |
 |---|---|---|---|---|
-| 1 | **Fixed in part (2026-11-14):** the collector zip is built reproducibly (`services/collector_build.py`) and `.github/workflows/release-collector.yml` attests and publishes it with its SHA-256; the server serves the same bytes and shows the hash; `collector/README.md` says how to check. Still open: in LAN mode the download is plain HTTP, and only someone who checks is protected (section 5). Was: The collector is fetched and run with no integrity check, as administrator; in LAN mode it travels over plain HTTP | `routers/intake.py:collector_zip`, `collector/PCDoctor.cmd` | LAN | Someone on the LAN gets admin code execution on every PC checked. Section 5 is the plan. |
-| 2 | **Fixed:** `Find-PCDoctorPresentMon` and `Find-PCDoctorNvidiaSmi` run only a file with a valid Intel / NVIDIA signature (`Test-PCDoctorSignedBy`) and skip the PATH when elevated; the server ships only the pinned PresentMon. Was: `PresentMon*.exe` is not re-verified, neither when the server zips it nor when the collector runs it; PATH fallback for `PresentMon.exe` and `nvidia-smi.exe` | `intake.py:collector_zip`, `PCDoctorCollector.psm1:Find-PCDoctorPresentMon`, `Find-PCDoctorNvidiaSmi` | All | Same outcome as #1 by a different door; easy to fix (check hash + signature before `Start-Process`, drop the PATH fallback when elevated). |
+| 1 | **Fixed in part (2026-11-14):** the collector zip is built reproducibly (`services/collector_build.py`) and `.github/workflows/release-collector.yml` attests and publishes it with its SHA-256; the server serves the same bytes and shows the hash; `collector/README.md` says how to check. Since 2026-11-17 the zip also contains Intel's PresentMon, unmodified, so the attestation covers it too: the build (`--require-presentmon` in the release workflow) fails unless the file's SHA-256 is the one pinned in `Get-Tools.ps1`. Still open: in LAN mode the download is plain HTTP, and only someone who checks is protected (section 5); the zip now carries a third-party executable that runs as administrator, so a wrong pin would ship in an attested release. Was: The collector is fetched and run with no integrity check, as administrator; in LAN mode it travels over plain HTTP | `routers/intake.py:collector_zip`, `collector/PCDoctor.cmd` | LAN | Someone on the LAN gets admin code execution on every PC checked. Section 5 is the plan. |
+| 2 | **Fixed:** `Find-PCDoctorPresentMon` and `Find-PCDoctorNvidiaSmi` run only a file with a valid Intel / NVIDIA signature (`Test-PCDoctorSignedBy`) and skip the PATH when elevated; the server and the release pack only the pinned PresentMon, inside the collector zip (the separate download `/api/collector/presentmon.zip` was removed on 2026-11-17). A copy without it fetches it on the checked PC through `Get-Tools.ps1` (pinned SHA-256 and Intel signature; `-NoDownload` turns it off) - one more network download, guarded the same way. Residual: the run-time check is the signature, not the hash. Was: `PresentMon*.exe` is not re-verified, neither when the server zips it nor when the collector runs it; PATH fallback for `PresentMon.exe` and `nvidia-smi.exe` | `intake.py:collector_zip`, `PCDoctorCollector.psm1:Find-PCDoctorPresentMon`, `Find-PCDoctorNvidiaSmi` | All | Same outcome as #1 by a different door; easy to fix (check hash + signature before `Start-Process`, drop the PATH fallback when elevated). |
 | 3 | **Mitigated (2026-11-15):** [lan-https.md](lan-https.md) puts HTTPS with a local certificate authority in front on a shared network; plain HTTP stays the default for a network you control. Was: Plain HTTP in LAN mode: session cookie, share keys, photo tokens and run data in clear | `Start-PCDoctor.ps1 -Lan`, `docker-compose.yml` | LAN | Documented and deliberate, but a LAN attacker can take the master's session. |
 | 4 | **Fixed:** `PCDOCTOR_PROXY_HOPS` (2 in `deploy/k8s/app.yaml`) skips exactly our own proxies in `deps.py:client_key`; `test_the_rate_limit_address_skips_only_our_own_proxies`. Was: Rate-limit key is the proxy's address in k8s (Traefik -> nginx -> API) | `deps.py:client_key` with `web/nginx.conf` | Cloud | **Bug.** Anyone can lock the master out of password sign-in and use up guest uploads for everyone. Fix with nginx `set_real_ip_from` + `real_ip_header`, or count back a configured number of hops. |
 | 5 | **Fixed:** `CleanRun` copies each file straight into the new zip; a 300 MB bomb now allocates about 1 MB (`TestZipBombIsNotHeldInMemoryUnpacked`). Was: Upload service keeps up to 1 GB of unpacked files in memory; pod limit is 768 Mi | `upload-service/archive.go:CleanRun`, `deploy/k8s/app.yaml` | Cloud, scale stack | **Bug.** A small zip bomb OOM-kills the upload service. Stream to a temp file as the Python side does, or lower the default limit well under the container limit. |
@@ -197,8 +197,9 @@ each with a test; they stay in the table so the history is visible.
 
 **Status: built on 2026-11-14, not run yet** (it runs on a `collector-v*`
 tag). The steps below are what `.github/workflows/release-collector.yml` and
-`api/pcdoctor_api/services/collector_build.py` do; PresentMon became a
-separate download (`/api/collector/presentmon.zip`).
+`api/pcdoctor_api/services/collector_build.py` do. One thing changed on
+2026-11-17: PresentMon, first a separate download, is now inside the zip
+(steps 1 and 4 below say how), so one download is all a PC needs.
 
 The goal is that a technician can prove the collector they are about to run as
 administrator is exactly what this repository's release workflow built from a
@@ -212,8 +213,12 @@ tied to the workflow's identity, and anyone can check it with `gh`.
 1. **Build the zip reproducibly.** One small script (shared with the server)
    writes the files in `COLLECTOR_FILES` in a fixed order, with a fixed
    timestamp and CRLF line endings for `PCDoctor.cmd`, into
-   `PCDoctor-collector.zip`. PresentMon is **not** in the release zip:
-   `Get-Tools.ps1` fetches it and checks it (hash + Intel signature).
+   `PCDoctor-collector.zip`. PresentMon is in the zip, byte for byte as
+   Intel published it, as `tools/PresentMon-2.6.0-x64.exe`, with Intel's
+   licence (`PresentMon-LICENSE.txt`). Its binary is not in git: the
+   workflow fetches it (`collector_build.py fetch-presentmon`), keeps it
+   only if its SHA-256 is the one pinned in `Get-Tools.ps1`, and the build
+   (`--require-presentmon`) checks that hash again and fails without it.
 2. **Release workflow** (`.github/workflows/release-collector.yml`), run on a
    tag such as `collector-v1.2.0`:
 
@@ -244,8 +249,11 @@ tied to the workflow's identity, and anyone can check it with `gh`.
    rebuilds the zip on every request (new timestamps, optional PresentMon), so
    its hash never matches anything. Change it to serve the released zip when
    one is in the collector folder (or build with the same reproducible script),
-   and show its SHA-256 on the "Get the collector" page. Put PresentMon in a
-   separate download if it is offered at all.
+   and show its SHA-256 on the "Get the collector" page. (Done. PresentMon
+   was at first a separate download; it is now packed inside, pinned by
+   SHA-256, and the API Docker image fetches it at build time so the server's
+   zip matches the release. A server without the pinned file serves the
+   scripts alone - a different hash - and the page says so.)
 5. **Document how to check** (in `collector/README.md`):
 
    ```bash
@@ -275,8 +283,12 @@ tied to the workflow's identity, and anyone can check it with `gh`.
   nothing against someone who can change that page; compare with GitHub.
 - **It says where the file came from, not that it is safe.** A bad commit
   that passes the workflow gets a valid attestation.
-- **It does not cover PresentMon or LibreHardwareMonitor.** PresentMon is
-  covered by `Get-Tools.ps1` (and should be re-checked at run time, item #2);
-  LibreHardwareMonitor is the user's own install.
+- **It does not vouch for PresentMon itself, and does not cover
+  LibreHardwareMonitor.** The attestation covers the PresentMon file in the
+  zip only in the sense that it is the file this repository pinned. That it
+  is Intel's is checked separately: by the pinned SHA-256 at build time and
+  by Intel's signature each time the collector runs it (item #2). A copy the
+  collector fetches itself (a git checkout) is covered by `Get-Tools.ps1`,
+  not by the attestation. LibreHardwareMonitor is the user's own install.
 - **Private repositories** need GitHub Enterprise Cloud for attestations; this
   plan assumes the repository stays public.

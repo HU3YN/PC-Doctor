@@ -16,9 +16,10 @@ This repository's own code: the collector (`collector/`), the API (`api/`),
 the dashboard (`web/`), the upload service (`upload-service/`), the worker,
 the Discord bot (`bot/`) and the deployment files (`deploy/`).
 
-Not in scope: third-party tools the collector downloads (PresentMon,
-LibreHardwareMonitor) and services PC Doctor talks to (Discord, Google,
-Anthropic). Report those to their owners.
+Not in scope: third-party tools the collector uses (PresentMon, which ships
+unmodified inside the collector zip, and LibreHardwareMonitor) and services
+PC Doctor talks to (Discord, Google, Anthropic). Report those to their
+owners. How this repository fetches, checks and runs PresentMon is in scope.
 
 ## How it is built to be safe
 
