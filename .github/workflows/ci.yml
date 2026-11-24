@@ -303,6 +303,27 @@ jobs:
           curl -fsS 'http://localhost:9090/api/v1/query?query=up' > up.json
           python3 -c 'import json; r=json.load(open("up.json"))["data"]["result"]; up={x["metric"]["job"]: x["value"][1] for x in r}; print(up); assert up=={"api":"1","upload":"1","worker":"1"}, up'
           curl -fsS http://localhost:3000/api/health | grep -q '"database": *"ok"'
+          # Prometheus loaded every rule in deploy/monitoring/alerts.yml, and each evaluates without error.
+          EXPECTED=$(python3 -c 'import yaml; print(sum(len(g["rules"]) for g in yaml.safe_load(open("deploy/monitoring/alerts.yml"))["groups"]))')
+          curl -fsS http://localhost:9090/api/v1/rules > rules.json
+          python3 - "$EXPECTED" <<'PY'
+          import json, sys
+          expected = int(sys.argv[1])
+          doc = json.load(open("rules.json"))
+          assert doc["status"] == "success", doc["status"]
+          rules = [r for g in doc["data"]["groups"] for r in g["rules"]]
+          bad = [r["name"] for r in rules if r.get("health") != "ok" or r.get("lastError")]
+          print(f"{len(rules)} rules loaded, {expected} expected, unhealthy: {bad}")
+          assert expected > 0 and len(rules) >= expected, (len(rules), expected)
+          assert not bad, bad
+          PY
+          # Grafana provisioned the PC Doctor dashboard (it may take a moment after the API is up).
+          for i in $(seq 1 15); do
+            curl -fsS -u "admin:$GRAFANA_PASSWORD" 'http://localhost:3000/api/search?query=PC%20Doctor' > dash.json || true
+            python3 -c 'import json,sys; sys.exit(0 if any(d.get("title")=="PC Doctor" for d in json.load(open("dash.json"))) else 1)' 2>/dev/null && break
+            sleep 2
+          done
+          python3 -c 'import json; d=json.load(open("dash.json")); print(d); assert any(x.get("title")=="PC Doctor" for x in d), "dashboard PC Doctor not provisioned"'
           # Redis refuses a client without the password.
           docker compose -f docker-compose.yml -f docker-compose.scale.yml exec -T redis \
             sh -c 'unset REDISCLI_AUTH; redis-cli ping' | grep -q NOAUTH
