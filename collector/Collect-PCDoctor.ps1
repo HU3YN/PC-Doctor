@@ -301,6 +301,16 @@ if ($Mode -eq 'Capture') {
         if ($sensorSource -ne 'librehardwaremonitorlib') {
             $nvidiaSmi = Find-PCDoctorNvidiaSmi -Elevated:$isAdmin
             $sensorSource = $(if ($nvidiaSmi) { 'windows+nvidia-smi' } else { 'windows' })
+            if ($nvidiaSmi) {
+                # Cross-check, for the log only: the GPU temperature Windows'
+                # own adapter counters give (what AMD and Intel cards rely on)
+                # next to nvidia-smi's, on the same card.
+                $check = Get-PCDoctorWindowsSample -NvidiaSmi $nvidiaSmi
+                $windowsTemps = @(Get-PCDoctorGpuPerf | Where-Object { $null -ne $_.temperature_c } | ForEach-Object { '{0:0.0} C' -f $_.temperature_c })
+                $log.Add(('GPU temperature cross-check: nvidia-smi {0}; Windows adapter counters {1}' -f
+                    $(if ($null -ne $check['gpu_temp_c']) { '{0:0.0} C' -f $check['gpu_temp_c'] } else { 'none' }),
+                    $(if ($windowsTemps.Count) { $windowsTemps -join ', ' } else { 'none' })))
+            }
             if (-not ($temperatureDriver -and $temperatureDriver.installed_by_collector)) {
                 Add-Warning 'There is no CPU temperature in this run: allow the temperature driver when asked (as administrator), or start LibreHardwareMonitor with Options > Remote Web Server > Run.'
             }

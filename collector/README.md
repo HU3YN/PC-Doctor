@@ -64,8 +64,15 @@ Intel's signature.
 | Frame times | Intel PresentMon | None: it is in the zip. A copy without it (a git checkout) fetches it at the first capture - see below |
 | CPU temperature | LibreHardwareMonitor, or the temporary driver below | Either start LibreHardwareMonitor yourself (**Options > Remote Web Server > Run**, leave it running; the collector uses it first), or answer yes when the collector offers the temporary driver |
 
-An NVIDIA card's temperature needs nothing extra (it comes from the signed
-`nvidia-smi` that the driver installs).
+A graphics card's temperature needs nothing extra. An NVIDIA card's comes
+from the signed `nvidia-smi` that the driver installs. On AMD and Intel
+graphics (or when `nvidia-smi` gives nothing) the collector reads the GPU
+temperature, and the fan speed where the driver reports one, from Windows' own
+graphics-adapter counters - the source of Task Manager's GPU temperature
+(Windows 10 1803 or later, `D3DKMTQueryAdapterInfo` in gdi32.dll). It follows
+the busiest adapter; a driver that reports 0 there gives no reading. Such runs
+keep `sensors.source` = `windows`, so the source of `gpu_temp_c` is not named
+in the manifest. Not yet proven on a real AMD or Intel GPU.
 
 ### CPU temperature: the temporary driver
 
@@ -103,7 +110,8 @@ Not yet proven on a real PC: a real CPU temperature reading, Memory Integrity
 [docs/threat-model.md](../docs/threat-model.md).
 
 Without them a capture still records what Windows itself can report (CPU and
-GPU load, CPU speed, RAM use, and an NVIDIA card's temperature and power) and
+GPU load, CPU speed, RAM use, the GPU temperature where Windows' adapter
+counters have one, and an NVIDIA card's temperature and power) and
 says clearly what is missing.
 
 ### When PresentMon is not in the folder

@@ -486,6 +486,60 @@ Describe 'The link after an upload' {
     }
 }
 
+Describe 'GPU temperature from Windows (D3DKMT)' {
+    It 'writes a LUID the way the GPU engine counters do' {
+        ConvertTo-PCDoctorGpuLuidKey 0 53669 | Should -Be '0x00000000_0x0000D1A5'
+        ConvertTo-PCDoctorGpuLuidKey -1 1 | Should -Be '0xFFFFFFFF_0x00000001'
+        $name = 'pid_1234_luid_0x00000000_0x0000d1a5_phys_0_eng_0_engtype_3D'
+        $name -match 'luid_(0x[0-9A-Fa-f]+_0x[0-9A-Fa-f]+)' | Should -BeTrue
+        ConvertTo-PCDoctorGpuLuidKey $Matches[1] | Should -Be '0x00000000_0x0000D1A5'
+        ConvertTo-PCDoctorGpuLuidKey '0x0_0xD1A5' | Should -Be '0x00000000_0x0000D1A5'
+        ConvertTo-PCDoctorGpuLuidKey 'gpu' | Should -BeNullOrEmpty
+    }
+    It 'keeps real readings and drops 0 and over 150 C' {
+        $reading = ConvertTo-PCDoctorGpuPerfReading ([pscustomobject]@{ LuidHigh = 0; LuidLow = 1; Status = 0; TemperatureDeciC = 655; FanRpm = 1450 })
+        $reading.key | Should -Be '0x00000000_0x00000001'
+        $reading.temperature_c | Should -Be 65.5
+        $reading.fan_rpm | Should -Be 1450
+        $empty = ConvertTo-PCDoctorGpuPerfReading ([pscustomobject]@{ LuidHigh = 0; LuidLow = 1; Status = 0; TemperatureDeciC = 0; FanRpm = 0 })
+        $empty.temperature_c | Should -BeNullOrEmpty
+        $empty.fan_rpm | Should -BeNullOrEmpty
+        (ConvertTo-PCDoctorGpuPerfReading ([pscustomobject]@{ LuidHigh = 0; LuidLow = 1; Status = 0; TemperatureDeciC = 1501; FanRpm = 0 })).temperature_c | Should -BeNullOrEmpty
+        (ConvertTo-PCDoctorGpuPerfReading ([pscustomobject]@{ LuidHigh = 0; LuidLow = 1; Status = 0; TemperatureDeciC = 1500; FanRpm = 0 })).temperature_c | Should -Be 150
+        (ConvertTo-PCDoctorGpuPerfReading ([pscustomobject]@{ LuidHigh = 0; LuidLow = 1; Status = 0; TemperatureDeciC = 4294967295; FanRpm = 0 })).temperature_c | Should -BeNullOrEmpty
+        (ConvertTo-PCDoctorGpuPerfReading ([pscustomobject]@{ LuidHigh = 0; LuidLow = 1; Status = -1073741823; TemperatureDeciC = 600; FanRpm = 900 })).temperature_c | Should -BeNullOrEmpty
+    }
+    It 'finds the busiest adapter, and none on a tie' {
+        Select-PCDoctorBusiestGpuKey @{ '0x00000000_0x0000d1a5' = 80.0; '0x00000000_0x0000E001' = 3.0 } | Should -Be '0x00000000_0x0000D1A5'
+        Select-PCDoctorBusiestGpuKey @{ '0x00000000_0x0000D1A5' = 0.0; '0x00000000_0x0000E001' = 0.0 } | Should -BeNullOrEmpty
+        Select-PCDoctorBusiestGpuKey @{ 'gpu' = 50.0 } | Should -BeNullOrEmpty
+        Select-PCDoctorBusiestGpuKey @{} | Should -BeNullOrEmpty
+    }
+    It 'takes the busiest adapter, else the only one with a temperature' {
+        $igpu = [ordered]@{ key = '0x00000000_0x0000E001'; temperature_c = 48.0; fan_rpm = $null }
+        $dgpu = [ordered]@{ key = '0x00000000_0x0000D1A5'; temperature_c = 71.0; fan_rpm = 1800.0 }
+        $basic = [ordered]@{ key = '0x00000000_0x0000F00F'; temperature_c = $null; fan_rpm = $null }
+        (Select-PCDoctorGpuPerfReading -Readings @($igpu, $dgpu, $basic) -BusiestKey '0x00000000_0x0000D1A5').temperature_c | Should -Be 71
+        (Select-PCDoctorGpuPerfReading -Readings @($igpu, $dgpu, $basic) -BusiestKey '0x00000000_0x0000E001').temperature_c | Should -Be 48
+        Select-PCDoctorGpuPerfReading -Readings @($igpu, $dgpu, $basic) -BusiestKey $null | Should -BeNullOrEmpty
+        (Select-PCDoctorGpuPerfReading -Readings @($dgpu, $basic) -BusiestKey $null).temperature_c | Should -Be 71
+        (Select-PCDoctorGpuPerfReading -Readings @($dgpu, $basic) -BusiestKey '0x00000000_0x00000BAD').temperature_c | Should -Be 71
+        # The busy adapter gives nothing: another card's temperature would be the wrong GPU.
+        Select-PCDoctorGpuPerfReading -Readings @($dgpu, $basic) -BusiestKey '0x00000000_0x0000F00F' | Should -BeNullOrEmpty
+        Select-PCDoctorGpuPerfReading -Readings @() -BusiestKey $null | Should -BeNullOrEmpty
+    }
+    It 'compiles its C# and never throws' {
+        InModuleScope PCDoctorCollector {
+            if (-not ('PCDoctorGpuPerf' -as [type])) { Add-Type -TypeDefinition $script:GpuPerfSource -ErrorAction Stop }
+            'PCDoctorGpuPerf' -as [type] | Should -Not -BeNullOrEmpty
+        }
+        { Get-PCDoctorGpuPerf } | Should -Not -Throw
+        foreach ($reading in @(Get-PCDoctorGpuPerf)) {
+            if ($null -ne $reading.temperature_c) { $reading.temperature_c | Should -BeLessOrEqual 150 }
+        }
+    }
+}
+
 Describe 'Reading this PC' {
     It 'reads specs without names or serial numbers' {
         $specs = Get-PCDoctorSpecs
