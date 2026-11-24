@@ -11,7 +11,7 @@ def test_meta_lists_form_options_and_every_rule(client):
     meta = client.get("/api/meta").json()
     assert "thermal" in meta["categories"] and "fixed" in meta["statuses"]
     assert "gaming_pc" in meta["device_types"]
-    assert len(meta["rules"]) >= 29
+    assert len(meta["rules"]) >= 30
     assert {"code", "category", "title", "detects", "needs"} <= set(meta["rules"][0])
 
 
@@ -72,7 +72,7 @@ def test_stats_count_runs_findings_and_time(client, upload):
     stats = client.get("/api/stats?include_demo=true").json()
     assert stats["runs"] == 2 and stats["runs_by_verdict"] == {"warning": 1, "critical": 1}
     assert sum(stats["runs_by_week"].values()) == 2
-    assert stats["fault_types_detectable"] >= 29 and stats["fault_types_seen"] == 7
+    assert stats["fault_types_detectable"] >= 30 and stats["fault_types_seen"] == 7
     assert stats["findings_by_code"]["thermal.cpu_hot"] == 1
     assert stats["work_log_by_category"] == {"power": 2} and stats["work_log_minutes"] == 45
     assert stats["work_log_by_status"] == {"fixed": 1, "open": 1}

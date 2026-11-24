@@ -17,9 +17,9 @@ A rule answers one of three ways, and the dashboard shows which:
 | `hardware.whea_fatal` | Processor | The hardware reported an error it could not recover from. | the Windows event log |
 | `hardware.whea_corrected` | Processor | The hardware keeps making errors that it manages to correct - an early warning. | the Windows event log |
 | `power.unexpected_shutdown` | Power / PSU | The PC lost power or froze and was forced off, without a blue screen. | the Windows event log |
-| `stability.bluescreen` | Windows / software | Windows crashed with a stop code (blue screen). | the Windows event log |
+| `stability.bluescreen` | Windows / software | Windows crashed with a stop code (blue screen); links a disk error just before it, and for 0x9F on a USB drive hints at the drive failing to power down. | the Windows event log |
 | `gpu.driver_timeout` | Graphics card | The graphics driver stopped responding and Windows restarted it. | the Windows event log |
-| `storage.io_errors` | Storage (SSD / HDD) | Windows logged bad blocks, drive resets, I/O retries or file-system corruption. | the Windows event log |
+| `storage.io_errors` | Storage (SSD / HDD) | Windows logged bad blocks, drive resets, I/O retries or file-system corruption; names the drive, and for a USB drive or card says so and softens the advice. | the Windows event log |
 | `memory.diagnostic_failed` | Memory (RAM) | Windows Memory Diagnostic found bad memory. | a Windows Memory Diagnostic result in the event log |
 | `cpu.firmware_speed_limit` | Processor | The firmware is holding the processor below full speed. | the Windows event log |
 | `performance.stutter` | Performance | Uneven frame times: spikes, hitches, or 1% lows far below the average. | a PresentMon capture |
@@ -37,6 +37,7 @@ A rule answers one of three ways, and the dashboard shows which:
 | `driver.gpu_missing` | Driver | No real graphics driver is installed (Microsoft Basic Display Adapter). | graphics adapters from the collector |
 | `driver.gpu_old` | Driver | The graphics driver is old. | graphics driver dates from the collector |
 | `os.power_saver_plan` | Windows / software | Windows is set to the Power saver plan, which caps CPU speed. | the active power plan from the collector |
+| `display.refresh_below_max` | Peripheral / display | A screen runs at a much lower refresh rate than it can do. | the screens and their refresh rates from the collector |
 | `power.battery_worn` | Power / PSU | The laptop battery has lost a large part of its capacity. | battery capacities from the collector |
 | `thermal.cpu_hot` | Thermal / cooling | The processor runs too hot under load. | CPU temperature from sensors |
 | `thermal.cpu_throttling` | Thermal / cooling | The processor slows itself down when it gets hot. | CPU temperature and CPU clock speed from sensors |
@@ -76,6 +77,7 @@ captures, recording the score before and after each change.
 | Low space | under 10% free, or under 15 GB on the Windows drive | |
 | RAM / VRAM full | 95% / 97%+ for the worst 5% of the run | A single momentary peak does not count |
 | Unexpected shutdowns | any is a warning; 3+ in 30 days is critical | |
+| Slow refresh rate | a higher rate is offered that is 1.2x+ and 20 Hz+ above the current one | So 59 vs 60 Hz (the same mode) never fires. If Windows offers no higher rate but the screen's own list does, the finding points at the cable or port |
 | Old graphics driver | 18+ months (info only) | Windows' own built-in drivers are skipped: they are all dated 2006-06-21 |
 
 ## Adding a rule

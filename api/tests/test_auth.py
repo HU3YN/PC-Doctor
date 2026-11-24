@@ -206,7 +206,6 @@ def test_every_api_route_is_either_master_only_or_deliberately_public(client):
         ("GET", "/api/noboot"),
         ("GET", "/api/collector"),
         ("GET", "/api/collector.zip"),
-        ("GET", "/api/collector/presentmon.zip"),  # only the pinned file
         ("POST", "/api/runs"),
         ("GET", "/api/shared/{key}"),
         ("GET", "/api/shared/{key}/series"),
