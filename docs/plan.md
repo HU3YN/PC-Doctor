@@ -232,14 +232,24 @@ for load at the start. Left:
 
 ### Step 2 - The owner's hardware (needs the owner)
 
-1. Ask the three questions about the first run: is the monitor really
-   60 Hz (Windows reports 59 Hz)? Was a USB drive or card reader attached on
-   25 October? Did the blue screen happen around sleep or shutdown? With
-   answers and the owner's yes, make it the first real case in `eval/cases/`
-   (the raw zip is not committed without that yes; it is in the owner's
-   `collector\runs` folder).
+1. **Answered by the owner (2026-11-24):** the monitor is **360 Hz** (so
+   Windows running it at 59 Hz is a real fault - wrong setting or a cable or
+   port that cannot carry 360 Hz; the collector now records the offered
+   modes and rule `display.refresh_below_max` flags it); a **USB-C drive was
+   attached** on 25 October (so "Disk 3" was most likely that drive, not an
+   internal SSD); the blue screen happened **at shutdown** (0x9F
+   DRIVER_POWER_STATE_FAILURE at shutdown fits a USB storage device or its
+   driver failing to power down - consistent with "possibly one incident").
+   Still to do: the owner re-attaches the first run's zip (in
+   `collector\runs`) and says yes, then it becomes the first real case in
+   `eval/cases/` with that label; check the next quick run names Disk 3 as
+   the USB drive (`physical_disks[].number`, bus type). Consider teaching
+   the disk and 0x9F findings that a removable USB disk is the likely cause
+   when it is the disk named.
 2. Next capture: with the current default branch and a game running.
-   Frame times need nothing else now; until Step 1 is finished, CPU
+   Frame times need nothing else now; after a quick run, check the new
+   `displays` entry shows 59 Hz current and 360 Hz offered (or not - which
+   tells setting from cable); until Step 1 is finished, CPU
    temperature still needs LibreHardwareMonitor started by hand.
 3. First look at the new `memory.modules[].bank` values: if they tell the
    two channels apart (e.g. "P0 CHANNEL A" / "P0 CHANNEL B"), extend
