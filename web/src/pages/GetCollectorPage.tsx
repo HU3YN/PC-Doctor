@@ -16,8 +16,9 @@ export function GetCollectorPage() {
         <div>
           <h1>Get the collector</h1>
           <p className="sub">
-            The collector is a small read-only script. It runs from a USB stick, installs nothing,
-            and saves what it finds back onto the stick.
+            The collector is a small read-only script. It runs from a USB stick and saves what it
+            finds back onto the stick. The one thing it can install is a temporary temperature
+            driver, and only if you say yes.
           </p>
         </div>
         {info.data?.available && (
@@ -64,6 +65,17 @@ export function GetCollectorPage() {
                 PresentMon (Intel&apos;s frame-time recorder, needed for frame times) is not in this
                 server&apos;s zip. The collector fetches and checks it itself on the first capture, if
                 the PC it runs on is online.
+              </p>
+            )}
+            {info.data.includes_temperature_tools ? (
+              <p>
+                CPU temperature works from the same download: the collector asks before installing a
+                temporary driver for the capture, and removes it afterwards.
+              </p>
+            ) : (
+              <p>
+                CPU temperature needs LibreHardwareMonitor started by hand: this server&apos;s zip
+                does not include the temperature driver.
               </p>
             )}
             {info.data.sha256 && (

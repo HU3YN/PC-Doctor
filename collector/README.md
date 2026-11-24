@@ -1,8 +1,10 @@
 # Collector
 
 A read-only PowerShell script that gathers a PC's hardware health and
-performance data into one folder. Nothing is installed and nothing on the PC
-is changed. It works from a USB stick, with no internet, on any Windows 10 or
+performance data into one folder. It changes nothing on the PC, with one
+exception: a capture can install a temperature driver, but only if you say
+yes (or pass `-InstallTemperatureDriver`), and it removes it when the capture
+ends (see "CPU temperature" below). It works from a USB stick, with no internet, on any Windows 10 or
 11 PC (Windows PowerShell 5.1 or PowerShell 7).
 
 ## Use it
@@ -55,17 +57,50 @@ The zip contains one program that is not ours: Intel's PresentMon, as
 pinned in `Get-Tools.ps1`, and the collector runs it only if it carries
 Intel's signature.
 
-## For a capture: two free tools
+## For a capture: two tools
 
 | For | Tool | Set-up |
 |---|---|---|
 | Frame times | Intel PresentMon | None: it is in the zip. A copy without it (a git checkout) fetches it at the first capture - see below |
-| Temperatures | LibreHardwareMonitor | Download it yourself, run it, and switch on **Options > Remote Web Server > Run**. Leave it running during the capture |
+| CPU temperature | LibreHardwareMonitor, or the temporary driver below | Either start LibreHardwareMonitor yourself (**Options > Remote Web Server > Run**, leave it running; the collector uses it first), or answer yes when the collector offers the temporary driver |
 
 An NVIDIA card's temperature needs nothing extra (it comes from the signed
-`nvidia-smi` that the driver installs). CPU temperature needs
-LibreHardwareMonitor. A way to read CPU temperature with nothing to start by
-hand is being tested (see [docs/plan.md](../docs/plan.md)).
+`nvidia-smi` that the driver installs).
+
+### CPU temperature: the temporary driver
+
+Windows does not give CPU temperature to ordinary programs. When
+LibreHardwareMonitor is not running and the collector runs as administrator
+in Capture mode, it can read it through a driver:
+
+- If PawnIO is already installed on the PC, the collector uses it and leaves it
+  alone.
+- Otherwise it asks: "Install it for this capture? [y/N]". The default is no.
+  Close games with anti-cheat first.
+- `-InstallTemperatureDriver` installs without asking (for unattended runs).
+  `-NoTemperatureDriver` never offers it.
+
+What is used: PawnIO 2.2.0.0 by namazso (`tools\PawnIO_setup.exe`, GPL-2.0,
+unmodified) and LibreHardwareMonitorLib 0.9.6 with 13 other libraries
+(`tools\lhm`, MPL-2.0; licences in `licences\`). Every file is pinned by
+SHA-256 in `temperature-tools.json` and checked again before use, and the
+installer must also carry namazso's signature. If any check fails, none of
+them is used. Sensors are read in a separate Windows PowerShell 5.1 process.
+
+When the capture ends (also on Ctrl+C) the collector removes what it
+installed: PawnIO's own uninstaller, then the leftover driver package and the
+stopped service (`pnputil`, `sc delete`), and checks nothing is left. If the
+window is closed mid-capture, a marker file
+(`%ProgramData%\PCDoctor\pawnio-installed-by-pcdoctor.txt`) lets the next run
+as administrator remove it. The manifest records what happened in
+`capture.temperature_driver`.
+
+To remove it by hand: Settings > Apps > Installed apps > PawnIO > Uninstall.
+
+Not yet proven on a real PC: a real CPU temperature reading, Memory Integrity
+(HVCI) switched on, and games with anti-cheat. See
+[docs/testing.md](../docs/testing.md#what-only-the-owner-can-prove) and
+[docs/threat-model.md](../docs/threat-model.md).
 
 Without them a capture still records what Windows itself can report (CPU and
 GPU load, CPU speed, RAM use, and an NVIDIA card's temperature and power) and
@@ -103,6 +138,8 @@ of the busiest program on screen that is not part of the Windows shell
 .\Collect-PCDoctor.ps1 -Mode Capture -Seconds 300 -Label "after repaste" -Process game.exe
 .\Collect-PCDoctor.ps1 -Mode Quick -UploadUrl http://192.168.1.20:8080   # send it straight to the dashboard
 .\Collect-PCDoctor.ps1 -Mode Capture -NoDownload                         # never fetch PresentMon, even if it is missing
+.\Collect-PCDoctor.ps1 -Mode Capture -InstallTemperatureDriver           # install the temperature driver without asking
+.\Collect-PCDoctor.ps1 -Mode Capture -NoTemperatureDriver                # never offer it
 Get-Help .\Collect-PCDoctor.ps1 -Full
 ```
 

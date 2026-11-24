@@ -56,6 +56,11 @@ accounts. Each of these is untested until the owner does it. The bundled
 PresentMon, the automatic fetch and the load check have so far only been
 through the unit tests and the script analyzer (Pester and PSScriptAnalyzer
 on Linux, and the Python tests); none of the three has run on Windows yet.
+The temporary temperature driver is different in one way: CI's Windows job
+runs a full install-read-remove capture on a GitHub runner (a VM), so
+installing, finding the CPU sensor and removing everything is checked on every
+change. Only the rows below about a real CPU reading, a real PC, Memory
+Integrity and anti-cheat need the owner.
 
 | What | Where | How to know it worked |
 |---|---|---|
@@ -63,6 +68,10 @@ on Linux, and the Python tests); none of the three has run on Windows yet.
 | The bundled PresentMon runs | Same, straight from the unpacked zip, with no internet | `collector.log` names `tools\PresentMon-2.6.0-x64.exe`; no warning about its signature; `presentmon.csv` has rows |
 | The load check waits when no game is running | Your PC: start a capture on an idle desktop, then start a game | It says nothing seems to be running and waits; the capture begins by itself once the game is under load; the manifest's `capture.load_at_start` has `busy: true` and `waited_seconds` above 0. Also try Enter (captures anyway) and leaving it idle for 3 minutes (the run carries the idle warning) |
 | A git copy fetches PresentMon by itself | A PC with internet and a git checkout (no `collector\tools` folder): start a capture | The collector says it is fetching PresentMon, `tools\PresentMon-2.6.0-x64.exe` appears, and the run has frame times. With `-NoDownload`, or offline, the capture runs without frame times and says so |
+| A real CPU temperature through the temporary driver | The owner's Ryzen 7 9800X3D, as administrator, LibreHardwareMonitor closed, answer yes | `sensors.csv` has a plausible `cpu_temp_c` (not empty, not 0 or 255); the manifest says `capture.sensors.source` is `librehardwaremonitorlib` (GitHub's runner is a VM and proves only that the sensor is found) |
+| The driver prompt and its removal on a real PC | Same, then look in Settings > Apps > Installed apps and `services.msc` | The prompt appeared with default no; after the capture PawnIO is gone from both; `capture.temperature_driver` has `installed_by_collector: true` and `removed: true`. Also try: answer no (no driver, a warning about CPU temperature), close the window mid-capture (the next run as administrator removes it) |
+| Memory Integrity (HVCI) on | Same PC with Windows Security > Device security > Core isolation > Memory integrity switched on | The driver loads and the temperature is read, or the run says clearly that it could not be |
+| A game with anti-cheat after the driver is removed | Same PC: run a capture with the driver, then start an anti-cheat game | The game starts and plays normally; also note whether it objects while the driver is loaded (the prompt says to close such games first) |
 | LibreHardwareMonitor sensor names on real hardware | Same | `sensors.csv` has CPU and GPU temperature columns filled in |
 | The Rust collector against the PowerShell one | Same PC, same game, same length | Both runs diagnose the same; record each collector's CPU time and memory in [results.md](results.md) |
 | Live view from a real PC | Master and a second PC on your network | The Live page updates while the game runs |

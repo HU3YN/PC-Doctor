@@ -36,7 +36,9 @@ account yet - [what is verified](docs/results.md) and
    about 20 seconds; a performance capture runs for 5 minutes while a game or
    stress test is going (if nothing is running it says so and waits for you
    to start one). The collector download includes Intel's PresentMon for
-   frame times. It writes one zip file. It changes nothing on the PC.
+   frame times. It writes one zip file. It changes nothing on the PC, with one exception
+   that only happens if you say yes: for CPU temperature it can install a
+   hardware-monitoring driver for the capture and removes it afterwards.
 2. **Diagnose.** Drop the zip on the dashboard. You get a verdict, each
    problem in plain English with the numbers behind it and the next checks in
    order, frame-time and temperature charts, and a list of what was checked

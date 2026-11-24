@@ -18,7 +18,7 @@ says what it could not check.
 `capture` in the manifest: `requested_seconds`, `actual_seconds`,
 `target_process`, `presentmon` (`used`, `version`, `exit_code`, `frames`,
 `other_processes_removed`), `sensors` (`source`, `interval_seconds`, `samples`).
-`sensors.source` is `librehardwaremonitor`, `windows+nvidia-smi` or `windows`.
+`sensors.source` is `librehardwaremonitor`, `librehardwaremonitorlib` (read through the temporary driver, since 2026-11-24), `windows+nvidia-smi` or `windows`.
 
 ## Optional fields added later
 
@@ -40,6 +40,14 @@ means the same as `null`.
   (medians of three readings) and `waited_seconds` (how long it waited for a
   game or stress test to start). "Busy" is a GPU at 30% or more, or a CPU at
   50% or more.
+- `manifest.json` `capture.temperature_driver` (added 2026-11-24): present
+  when the collector considered the temperature driver (PawnIO). `name`
+  (`PawnIO`), `version`, `already_installed` (it was on the PC before the
+  capture; then it is used and left alone), `asked` (the collector asked "Install
+  it for this capture?"), `installed_by_collector` and `removed` (`true` once
+  the collector removed it and checked nothing was left; `null` if it did not
+  install it). `capture.sensors.source` is `librehardwaremonitorlib` when the
+  sensors were read this way.
 - `specs.json` `displays` (added 2026-11-24): a list with one entry per screen
   attached to the desktop: `adapter`, `resolution` (e.g. `2560x1440`),
   `refresh_hz` (the current rate as an integer, the way Windows gives it - 59

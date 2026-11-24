@@ -23,7 +23,9 @@ owners. How this repository fetches, checks and runs PresentMon is in scope.
 
 ## How it is built to be safe
 
-- The collector is read-only and collects no personal data
+- The collector is read-only, with one exception: a capture can install a
+  temperature driver, but only after you say yes, and removes it afterwards;
+  it collects no personal data
   ([docs/privacy.md](docs/privacy.md)).
 - Everything stored needs a sign-in; guests reach one run through a private
   key, and a test fails the build if a route is left open

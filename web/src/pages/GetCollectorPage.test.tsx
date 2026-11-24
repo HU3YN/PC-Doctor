@@ -11,6 +11,7 @@ function show(info: Partial<CollectorInfo>) {
     available: true,
     sha256: "ab".repeat(32),
     includes_presentmon: true,
+    includes_temperature_tools: true,
     lan_addresses: [],
     photo_reading: false,
     ...info,
@@ -39,6 +40,18 @@ describe("GetCollectorPage", () => {
     expect(downloads.map((link) => link.getAttribute("href"))).toEqual(["/api/collector.zip"]);
     expect(document.body.textContent).not.toMatch(/presentmon\.zip|Get-Tools/);
     expect(document.body.textContent).toMatch(/same file as the collector release/);
+  });
+
+  it("says CPU temperature works from the download, or needs LibreHardwareMonitor", async () => {
+    show({ includes_temperature_tools: true });
+    expect(await screen.findByText(/CPU temperature works from the same download/)).toBeInTheDocument();
+    expect(document.body.textContent).toMatch(/asks before installing a\s+temporary driver/);
+  });
+
+  it("says CPU temperature needs LibreHardwareMonitor when the zip lacks the tools", async () => {
+    show({ includes_temperature_tools: false });
+    expect(await screen.findByText(/needs LibreHardwareMonitor started by hand/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/works from the same download/);
   });
 
   it("says the collector fetches PresentMon itself when the server lacks it", async () => {
