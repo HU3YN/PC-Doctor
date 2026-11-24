@@ -11,7 +11,7 @@ __version__ = "0.1.0"
 
 # Bump when a rule or threshold changes, so stored results can be told apart
 # from results made with newer rules (the API offers "re-analyze" for this).
-RULES_VERSION = "2026.11.2"
+RULES_VERSION = "2026.11.3"
 
 __all__ = [
     "CATEGORIES",

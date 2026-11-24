@@ -1,0 +1,112 @@
+{
+  "_comment": "Pinned files for reading CPU temperature (docs/plan.md, Step 1). collector_build.py fetches them into tools/, keeps each only if its SHA-256 matches, and packs them; Collect-PCDoctor.ps1 checks them again before use. Change a version only together with its hash.",
+  "pawnio": {
+    "version": "2.2.0.0",
+    "file": "PawnIO_setup.exe",
+    "url": "https://github.com/namazso/PawnIO.Setup/releases/download/2.2.0/PawnIO_setup.exe",
+    "sha256": "1F519A22E47187F70A1379A48CA604981C4FCF694F4E65B734AAA74A9FBA3032",
+    "signer": "namazso",
+    "licence": "GPL-2.0",
+    "source": "https://github.com/namazso/PawnIO"
+  },
+  "libraries": [
+    {
+      "id": "librehardwaremonitorlib",
+      "version": "0.9.6",
+      "sha256": "60DB5E0D9135F4658B385CAE139D3B9EAEAC0A8E867D322D20B5DBE4C4039197",
+      "dll": "runtimes/win-x64/lib/net472/LibreHardwareMonitorLib.dll",
+      "dll_sha256": "6EBC194316536BA61AF5BE24508AD9FCBB2ECC685E716C12E787C79530F66BF0"
+    },
+    {
+      "id": "diskinfotoolkit",
+      "version": "1.1.2",
+      "sha256": "A997F0B3701E20B2AB9296E07EE4F74F877E75015277FB6BD314ADE1E2C4DB13",
+      "dll": "lib/net472/DiskInfoToolkit.dll",
+      "dll_sha256": "1ACBF51B3C10C51C986CF43021680D34A2E38D9A5BA652BCFA9A1B5F7FC09800"
+    },
+    {
+      "id": "hidsharp",
+      "version": "2.6.4",
+      "sha256": "CF55D4B4D7B42DC1D8496B7B592BA00D1ECD48A70BC07BD8DABD3E9976D108E7",
+      "dll": "lib/netstandard2.0/HidSharp.dll",
+      "dll_sha256": "79F2BC8DDFF102E6DBEDE84B2C211A3AEA2ED675BF762FA0F02ECB65F61EE812"
+    },
+    {
+      "id": "ramspdtoolkit-ndd",
+      "version": "1.4.2",
+      "sha256": "57C893824A68C71538055F242586616D4205A671C300897C21B2A6F88270CE64",
+      "dll": "lib/net472/RAMSPDToolkit-NDD.dll",
+      "dll_sha256": "B6882354C7C8EC186617E421507743DBFAE09C5C1FC24CEF76A1D0C0C26651DE"
+    },
+    {
+      "id": "system.management",
+      "version": "10.0.2",
+      "sha256": "BB40E7E33254BD2A5FB66B6F476E1E9EA28F0F1C403172696AFDBFB1F8B06221",
+      "dll": "lib/netstandard2.0/System.Management.dll",
+      "dll_sha256": "6E0591C85D858BBA59E9B16B7C00019EBDBE8F5D0321DD9CEDE35965DBF2891B"
+    },
+    {
+      "id": "system.memory",
+      "version": "4.6.3",
+      "sha256": "26078AEB758C9AE985E8BF851F973026061DA6A5EB4837204D0C2D2204C72955",
+      "dll": "lib/net462/System.Memory.dll",
+      "dll_sha256": "D5E8E4866F9CFA66F7765660F84B210198893E55335487AFE5EBDA342C0E913D"
+    },
+    {
+      "id": "system.threading.accesscontrol",
+      "version": "10.0.3",
+      "sha256": "9F4F28238E13C6CC47B789A4A1D5647997747594DFCFD45C1526F9B671CDE073",
+      "dll": "lib/net462/System.Threading.AccessControl.dll",
+      "dll_sha256": "5E3A3902F04F840C0FC1F9C2F249F804F6CFDF7901B2E06778BC2A4603AE4694"
+    },
+    {
+      "id": "blacksharp.core",
+      "version": "1.0.7",
+      "sha256": "4F713FE18EE7C85A7C49F28309ADAA815714333326AA81FD4D4A81619ECAA0AB",
+      "dll": "lib/net472/BlackSharp.Core.dll",
+      "dll_sha256": "CAFB93AFCC8D8A367E21F619673D05C06887D8964867FED1371F02DED1CD3E23"
+    },
+    {
+      "id": "system.codedom",
+      "version": "10.0.2",
+      "sha256": "30028B346C7B99CCDC484EA7EDBDC7BD038B3C2F007E4E4CBFA3D45768651C2D",
+      "dll": "lib/net462/System.CodeDom.dll",
+      "dll_sha256": "ADAB61FFC51EF97AD6F3DA0AF3AA6FA4324DB70F817E6D31FC765F53DC3D2881"
+    },
+    {
+      "id": "system.buffers",
+      "version": "4.6.1",
+      "sha256": "B00451E91D016FBEC091AD1E361F3A7015E1D91D4047F7E48A74455B2A673D79",
+      "dll": "lib/net462/System.Buffers.dll",
+      "dll_sha256": "2D78D770C9CB997199154AE8C018B9F1D1EFBC86729F7264DDE6DBAD2A12CAC3"
+    },
+    {
+      "id": "system.numerics.vectors",
+      "version": "4.6.1",
+      "sha256": "2BC500A86DCB02F2032D6D877F9E2D6E9E4A79080E57239B4198679D4031F2C7",
+      "dll": "lib/net462/System.Numerics.Vectors.dll",
+      "dll_sha256": "20C2FA81B8C70D651099D762954F285FD4F942E63B2D7217C145DAB8D4B2F4C9"
+    },
+    {
+      "id": "system.runtime.compilerservices.unsafe",
+      "version": "6.1.2",
+      "sha256": "5F6A7F53AF3465F92BEB6DA873EBE0E496206C313313B98BADEE4355A6B25937",
+      "dll": "lib/net462/System.Runtime.CompilerServices.Unsafe.dll",
+      "dll_sha256": "08CBD7278B66F1E68425A82D4B97181A4130D93E3DD91831407ABA7212CCDACF"
+    },
+    {
+      "id": "system.security.accesscontrol",
+      "version": "6.0.0",
+      "sha256": "A8EC961016CDAF7123C92F9EB451BCFF331BB8F8C0F8EF9D8BBD7B24FF42C728",
+      "dll": "lib/net461/System.Security.AccessControl.dll",
+      "dll_sha256": "FF14C5F628B9A6798D173AEFBBA0A43D61E66F715108E2576AC0D3DFAB9071D0"
+    },
+    {
+      "id": "system.security.principal.windows",
+      "version": "5.0.0",
+      "sha256": "081390C25F6F78592B28ADA853C24514488A221FE9F9A24EFAAF5373643FF3D6",
+      "dll": "lib/net461/System.Security.Principal.Windows.dll",
+      "dll_sha256": "B4D8E15ADC235D0E858E39B5133E5D00A4BAA8C94F4F39E3B5E791B0F9C0C806"
+    }
+  ]
+}

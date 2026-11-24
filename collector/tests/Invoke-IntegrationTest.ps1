@@ -16,7 +16,11 @@ param(
     [int]$Seconds = 8,
     [string]$OutputDir = (Join-Path ([System.IO.Path]::GetTempPath()) ('pcdoctor-it-' + [guid]::NewGuid().ToString('N').Substring(0, 8))),
     # Which PowerShell runs the collector: 'powershell' (5.1) or 'pwsh' (7).
-    [string]$Shell = 'powershell'
+    [string]$Shell = 'powershell',
+    # A capture that installs the temperature driver itself, reads through it,
+    # and must leave nothing of it behind (needs the files fetch-tools puts in
+    # collector/tools).
+    [switch]$TemperatureDriver
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,6 +34,7 @@ Write-Host "Running the collector: $Shell, mode $Mode"
 $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $collector, '-Mode', $Mode, '-OutputDir', $OutputDir,
     '-Label', 'integration test', '-NonInteractive')
 if ($Mode -eq 'Capture') { $arguments += @('-Seconds', [string]$Seconds) }
+if ($TemperatureDriver) { $arguments += '-InstallTemperatureDriver' }
 $watch = [System.Diagnostics.Stopwatch]::StartNew()
 & $Shell @arguments
 $exitCode = $LASTEXITCODE
@@ -106,6 +111,18 @@ if ($Mode -eq 'Capture') {
     Write-Host "  last row: $($rows[-1])"
     Assert-That ($manifest.capture.sensors.samples -eq ($rows.Count - 1)) 'manifest: sample count matches the file'
     Assert-That (-not (Test-Path (Join-Path $runDir.FullName 'presentmon_raw.csv'))) 'the unfiltered PresentMon file is gone'
+    if ($TemperatureDriver) {
+        $driver = $manifest.capture.temperature_driver
+        Write-Host "  temperature driver: $($driver | ConvertTo-Json -Compress)"
+        Assert-That ($driver.installed_by_collector -eq $true) 'temperature driver: installed by the collector'
+        Assert-That ($driver.removed -eq $true) 'temperature driver: removed after the capture'
+        Assert-That ($manifest.capture.sensors.source -eq 'librehardwaremonitorlib') "temperature driver: sensors came through it ($($manifest.capture.sensors.source))"
+        Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) 'PCDoctorCollector.psm1') -Force -DisableNameChecking
+        $left = Get-PCDoctorPawnIOLeftovers
+        Write-Host "  leftovers: $($left | ConvertTo-Json -Compress)"
+        Assert-That ($left.clean) 'temperature driver: nothing of PawnIO is left on the PC'
+        Assert-That (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'PCDoctor\pawnio-installed-by-pcdoctor.txt'))) 'temperature driver: the marker file is gone'
+    }
 }
 
 # The privacy rule, checked on the real output: no computer name, no user name.

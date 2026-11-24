@@ -5,10 +5,31 @@ PC or what they do on it. This page is the full list. The collector is open
 source and short, so you can check every line of it:
 [`collector/PCDoctorCollector.psm1`](../collector/PCDoctorCollector.psm1).
 
-## The collector is read-only
+## The collector is read-only, with one exception
 
-It changes no settings, installs no drivers and no software, and runs no
-fixes. It reads, and writes its findings to one folder.
+It changes no settings, installs no software, and runs no fixes. It reads,
+and writes its findings to one folder.
+
+The one exception (owner's decision, 2026-11-17): to read CPU temperature, a
+capture run as administrator may install the PawnIO hardware-monitoring
+driver. It does so only after you answer yes to "Install it for this
+capture?" (the default is no) or pass `-InstallTemperatureDriver`, and it
+removes the driver when the capture ends. `-NoTemperatureDriver` never offers
+it. If PawnIO was already on the PC, it is used and left alone.
+
+The driver is used only to read sensor values (temperatures, clock speeds,
+power). It reads nothing that identifies you or the PC. While it is
+installed, the collector leaves one small file,
+`%ProgramData%\PCDoctor\pawnio-installed-by-pcdoctor.txt` (install time,
+driver package name, exit code). The next run as administrator uses it to
+remove a driver left behind if the window was closed mid-capture, and deletes
+it once nothing is left. The run records `capture.temperature_driver` (name,
+version, whether it was already installed, whether you were asked, whether the
+collector installed and removed it).
+
+The collector download carries one program that is not ours: Intel's
+PresentMon, unmodified, in its `tools` folder. It is run from there during a
+capture and is not installed.
 
 ## What it reads
 
@@ -24,7 +45,7 @@ fixes. It reads, and writes its findings to one folder.
 | Size and free space of each drive letter | `Get-Volume` | Full drives |
 | Hardware events from the last 30 days: hardware errors (WHEA), unexpected shutdowns, blue-screen stop codes, thermal shutdowns, memory test results, disk errors, graphics driver resets, firmware speed limits | Windows System event log | Crashes and failing parts |
 | Frame times of **one** program during a capture | PresentMon | Stutter and frame rate |
-| Temperatures, loads, clock speeds, power, fan speed, memory use during a capture | LibreHardwareMonitor, or Windows itself and `nvidia-smi` | Overheating, throttling, bottlenecks |
+| Temperatures, loads, clock speeds, power, fan speed, memory use during a capture | LibreHardwareMonitor (if running), LibreHardwareMonitorLib through the temporary driver (if you allowed it), or Windows itself and `nvidia-smi` | Overheating, throttling, bottlenecks |
 
 The exact list of event providers and ids is in `$script:EventQueries`, and the
 only event data fields kept are in `$script:EventDataKept`, both at the top of
@@ -49,6 +70,24 @@ name and the current user name are replaced with placeholders.
 This is tested, not just promised: on every change, CI runs the collector on a
 real Windows machine and fails if the computer name, the user name or a serial
 number appears anywhere in the output (`collector/tests/Invoke-IntegrationTest.ps1`).
+
+## What goes over the network
+
+The collector download from a release or a PC Doctor server fetches nothing
+from the internet. The temperature driver's installer and libraries are
+inside it too. (It talks to the network only to upload a run to your
+PC Doctor server, when you give it one.)
+
+There is one case where the checked PC makes a request by itself. A copy of
+the collector without PresentMon (a git checkout) fetches it at the first
+capture: one download from github.com, kept only if it is the exact file
+expected (pinned SHA-256) and Intel signed it. The request sends nothing
+about the PC. GitHub sees the PC's IP address, as it does for any download.
+`-NoDownload` switches this off; the capture then has no frame times.
+
+The master computer makes the same one download when `Start-PCDoctor.cmd`
+starts it without Docker (or when its Docker image is built), so that the
+collector it offers has PresentMon inside.
 
 ## What is uploaded
 

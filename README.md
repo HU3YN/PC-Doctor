@@ -22,7 +22,7 @@ account yet - [what is verified](docs/results.md) and
 |  collector           | --------> |  dashboard (React + TypeScript)       |
 |  read-only PowerShell|  USB or   |     |                                 |
 |  (or the Rust        |  upload   |  API (FastAPI) -> rules engine        |
-|  capture collector)  |           |     |              (29 fault types)   |
+|  capture collector)  |           |     |              (30 fault types)   |
 |  specs, events,      |  live     |  PostgreSQL: runs, findings, work log |
 |  disks, frame times, | --------> |  optional: Go upload service, Redis   |
 |  sensors             |  NDJSON   |  queue + worker, Prometheus, Grafana  |
@@ -34,7 +34,11 @@ account yet - [what is verified](docs/results.md) and
 1. **Collect.** Copy the [`collector`](collector/) folder to the PC (a USB
    stick works) and double-click `PCDoctor.cmd`. A quick health check takes
    about 20 seconds; a performance capture runs for 5 minutes while a game or
-   stress test is going. It writes one zip file. It changes nothing on the PC.
+   stress test is going (if nothing is running it says so and waits for you
+   to start one). The collector download includes Intel's PresentMon for
+   frame times. It writes one zip file. It changes nothing on the PC, with one exception
+   that only happens if you say yes: for CPU temperature it can install a
+   hardware-monitoring driver for the capture and removes it afterwards.
 2. **Diagnose.** Drop the zip on the dashboard. You get a verdict, each
    problem in plain English with the numbers behind it and the next checks in
    order, frame-time and temperature charts, and a list of what was checked
@@ -161,7 +165,7 @@ deletes it - use **Work log > Backup** first). Without Docker, see
 
 ## What it can find
 
-29 fault types, each with its own check ([full list and thresholds](docs/rules.md)):
+30 fault types, each with its own check ([full list and thresholds](docs/rules.md)):
 
 - **Performance:** stutter and hitches, GPU-limited and CPU-limited games
 - **Heat:** hot CPU or GPU, thermal throttling, thermal shutdowns, hot drives
@@ -171,7 +175,7 @@ deletes it - use **Work log > Backup** first). Without Docker, see
 - **Memory:** failed memory tests, single-channel RAM, XMP off, mixed kits,
   RAM or video memory running out
 - **Set-up:** missing or old graphics driver, Power saver plan, worn laptop
-  battery, firmware limiting the CPU
+  battery, a screen running below its refresh rate, firmware limiting the CPU
 
 The thresholds are sensible starting values, not measured optimums. Tuning
 them needs real, labeled faults ([fault-testing.md](docs/fault-testing.md)).

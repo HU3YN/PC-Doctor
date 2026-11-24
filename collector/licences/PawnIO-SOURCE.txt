@@ -1,0 +1,22 @@
+PawnIO
+======
+
+tools/PawnIO_setup.exe is the official PawnIO installer, version 2.2.0.0,
+redistributed unmodified. The installer itself states: "This installer can
+be redistributed unmodified."
+
+  Downloaded from: https://github.com/namazso/PawnIO.Setup/releases/download/2.2.0/PawnIO_setup.exe
+  SHA-256:         1F519A22E47187F70A1379A48CA604981C4FCF694F4E65B734AAA74A9FBA3032
+                   (pinned in temperature-tools.json; checked when the zip is
+                   built and again by the collector before it is used)
+  Signed by:       namazso
+
+PawnIO is licensed under the GNU General Public License, version 2
+(GPL-2.0). The full text is in PawnIO-COPYING.txt next to this file.
+
+Source code:
+  PawnIO (driver and modules): https://github.com/namazso/PawnIO
+  The installer:               https://github.com/namazso/PawnIO.Setup
+
+The collector installs PawnIO only after asking, during a capture, and
+removes it again afterwards.
