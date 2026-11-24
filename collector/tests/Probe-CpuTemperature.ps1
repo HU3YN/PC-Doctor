@@ -68,7 +68,7 @@ $Packages = @(
 
 $result = [ordered]@{
     probe          = 'cpu-temperature'
-    probe_version  = 1
+    probe_version  = 2
     ran_at         = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     windows        = $null
     protections    = $null
@@ -81,6 +81,7 @@ $result = [ordered]@{
     reading        = $null
     uninstall      = $null
     leftovers      = $null
+    cleanup        = $null
     defender       = $null
     errors         = @()
 }
@@ -111,9 +112,23 @@ function Get-PawnIODriverPackages {
     # Driver packages left in Windows' driver store, by their published name.
     try {
         @(Get-CimInstance -ClassName Win32_PnPSignedDriver -Filter "DeviceName LIKE '%PawnIO%'" -ErrorAction Stop | ForEach-Object {
-                [ordered]@{ device = $_.DeviceName; inf = $_.InfName; signer = $_.Signer; version = $_.DriverVersion }
+                [ordered]@{ device = $_.DeviceName; device_id = $_.DeviceID; inf = $_.InfName; signer = $_.Signer; version = $_.DriverVersion }
             })
     } catch { @() }
+}
+function Get-PawnIOLeftovers {
+    # What of PawnIO is still on this PC: registration, folder, service,
+    # driver package, driver file.
+    $left = [ordered]@{
+        registered      = [bool](Get-PawnIOInstall)
+        folder_exists   = (Test-Path -LiteralPath (Join-Path $env:ProgramFiles 'PawnIO'))
+        services        = @(Get-PawnIOServices)
+        driver_packages = @(Get-PawnIODriverPackages)
+        sys_in_drivers  = @(Get-ChildItem -LiteralPath (Join-Path $env:SystemRoot 'System32\drivers') -Filter '*PawnIO*' -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+    }
+    $left.clean = (-not $left.registered) -and (-not $left.folder_exists) -and ($left.services.Count -eq 0) -and
+        ($left.driver_packages.Count -eq 0) -and ($left.sys_in_drivers.Count -eq 0)
+    return $left
 }
 function Get-SignatureInfo([string]$Path) {
     $signature = Get-AuthenticodeSignature -LiteralPath $Path
@@ -312,18 +327,37 @@ public static class PCDoctorProbeResolver {
             $result.uninstall = [ordered]@{ error = $_.Exception.Message }
             Add-ProbeError "Uninstall could not be started: $($_.Exception.Message)"
         }
-        Start-Sleep -Seconds 2
-        $left = Get-PawnIOInstall
-        $folder = Join-Path $env:ProgramFiles 'PawnIO'
-        $result.leftovers = [ordered]@{
-            registered      = [bool]$left
-            folder_exists   = (Test-Path -LiteralPath $folder)
-            services        = Get-PawnIOServices
-            driver_packages = Get-PawnIODriverPackages
-            sys_in_drivers  = @(Get-ChildItem -LiteralPath (Join-Path $env:SystemRoot 'System32\drivers') -Filter '*PawnIO*' -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+        Start-Sleep -Seconds 5
+        $result.leftovers = Get-PawnIOLeftovers
+        # On Windows Server 2025 (GitHub's runner, 2026-11-24) PawnIO's own
+        # uninstaller left its driver package in the driver store and a
+        # stopped service. Remove exactly those - PawnIO's device, its oemNN.inf
+        # package, its service - and look again.
+        if (-not $result.leftovers.clean) {
+            $steps = @()
+            foreach ($package in @($result.leftovers.driver_packages)) {
+                if ($package.device_id) {
+                    & pnputil.exe /remove-device $package.device_id | Out-Null
+                    $steps += [ordered]@{ step = 'pnputil /remove-device'; exit_code = $LASTEXITCODE }
+                }
+                if ($package.inf -match '^oem\d+\.inf$') {
+                    & pnputil.exe /delete-driver $package.inf /uninstall /force | Out-Null
+                    $steps += [ordered]@{ step = "pnputil /delete-driver $($package.inf) /uninstall /force"; exit_code = $LASTEXITCODE }
+                }
+            }
+            foreach ($service in @($result.leftovers.services)) {
+                if ($service.name -eq 'PawnIO') {
+                    & sc.exe stop PawnIO | Out-Null
+                    & sc.exe delete PawnIO | Out-Null
+                    $steps += [ordered]@{ step = 'sc delete PawnIO'; exit_code = $LASTEXITCODE }
+                }
+            }
+            Start-Sleep -Seconds 3
+            $result.cleanup = [ordered]@{ steps = $steps; leftovers_after = (Get-PawnIOLeftovers) }
         }
-        $clean = (-not $left) -and (-not $result.leftovers.folder_exists) -and (@($result.leftovers.services).Count -eq 0) -and (@($result.leftovers.sys_in_drivers).Count -eq 0)
-        $result.leftovers.clean = $clean
+        $after = $result.leftovers
+        if ($result.cleanup) { $after = $result.cleanup.leftovers_after }
+        $clean = $after.clean
         if ($clean) { Write-Host '  PawnIO is gone: no registration, folder, service or driver file left.' -ForegroundColor Green }
         else {
             Add-ProbeError 'Something of PawnIO is still on this PC after the uninstall - see "leftovers" in the result file.'
