@@ -440,6 +440,9 @@ def bluescreen(run: RunData, t: Thresholds) -> list[Finding] | None:
     if gap is not None:
         summary += _INCIDENT_NOTE.format(gap=gap)
         checks.insert(0, "Check the disk error found in the same run first (see that finding).")
+        if 0x9F in codes and _near_a_crash(_usb_disk_events(run, disk_events), _crash_records(run)):
+            summary += _USB_POWER_NOTE
+            checks[1:1] = _USB_POWER_CHECKS
     return [
         Finding(
             code="stability.bluescreen",
@@ -550,12 +553,58 @@ _INCIDENT_NOTE = (
 )
 
 
+_USB_POWER_NOTE = (
+    " The disk error was on a USB drive, and a USB storage device (or its driver) that fails "
+    "to change power state - typically when the PC shuts down or goes to sleep - is a common "
+    "cause of this stop code, so that drive is the likely suspect."
+)
+_USB_POWER_CHECKS = [
+    "Eject USB drives before shutting down or sleeping, and try the PC without the drive "
+    "plugged in.",
+    "Plug the drive straight into a port on the PC, not a hub, and update the chipset and "
+    "USB controller drivers.",
+    "If it does not happen again without the drive, that was the cause.",
+]
+_USB_DISK_CHECKS = [
+    "Back up anything important on the drive before testing further.",
+    "Try another cable, and a port on the PC itself (not a hub or a monitor or keyboard port).",
+    "Check the drive on another PC - if it fails there too, the drive is the problem.",
+    "Eject the drive before shutting down or unplugging it, and make sure it keeps power "
+    "(a drive without its own power supply can need a powered hub).",
+]
+
+
+def _disk_bus_kinds(run: RunData) -> dict[int, tuple[str, str]]:
+    """Disk number -> (bus kind, name) for the listed drives that are USB
+    ("usb") or a memory card ("card"); other drives are left out."""
+    kinds: dict[int, tuple[str, str]] = {}
+    disks = run.disks.get("physical_disks", []) if run.disks else []
+    for d in disks:
+        number = d.get("number")
+        if not isinstance(number, int) or isinstance(number, bool):
+            continue
+        bus = str(d.get("bus_type") or "").strip().lower()
+        if bus == "usb":
+            kinds[number] = ("usb", d.get("name") or "a drive")
+        elif bus in ("sd", "mmc"):
+            kinds[number] = ("card", d.get("name") or "a drive")
+    return kinds
+
+
+def _disk_numbers(events: list[dict[str, Any]]) -> list[int]:
+    return sorted({int(n) for e in events for n in _DISK_NUMBER.findall(str(e.get("message", "")))})
+
+
+def _usb_disk_events(run: RunData, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The events that name a USB drive or memory card."""
+    removable = _disk_bus_kinds(run)
+    return [e for e in events if any(n in removable for n in _disk_numbers([e]))]
+
+
 def _which_disks(run: RunData, events: list[dict[str, Any]]) -> tuple[str, list[int]]:
     """Name the drive(s) Windows calls "Disk N" in the event messages, from the
     disk numbers the collector records (older runs have none)."""
-    numbers = sorted(
-        {int(n) for e in events for n in _DISK_NUMBER.findall(str(e.get("message", "")))}
-    )
+    numbers = _disk_numbers(events)
     if not numbers:
         return "", []
     disks = run.disks.get("physical_disks", []) if run.disks else []
@@ -564,9 +613,14 @@ def _which_disks(run: RunData, events: list[dict[str, Any]]) -> tuple[str, list[
         for d in disks
         if isinstance(d.get("number"), int)
     }
+    removable = _disk_bus_kinds(run)
     parts = []
     for number in numbers:
-        if not known:
+        if number in removable:
+            kind, name = removable[number]
+            what = "a USB drive" if kind == "usb" else "a memory card"
+            parts.append(f"Disk {number} is the {name}, {what}")
+        elif not known:
             parts.append(
                 f"Windows calls the drive Disk {number}; this run does not record disk numbers, "
                 "so it cannot say which drive that is"
@@ -634,11 +688,35 @@ def storage_io_errors(run: RunData, t: Thresholds) -> list[Finding] | None:
     which, numbers = _which_disks(run, matched)
     gap = _near_a_crash(matched, _crash_records(run))
     incident = _INCIDENT_NOTE.format(gap=gap) if gap is not None else ""
+    removable = _disk_bus_kinds(run)
+    # Every disk the errors name is a listed USB drive or card: much less serious
+    # for the PC than an internal drive, so a critical finding drops to a warning
+    # (a warning stays one - the errors are still real).
+    removable_only = bool(numbers) and all(n in removable for n in numbers)
+    if removable_only:
+        usb_note = (
+            " Errors on a USB drive usually come from the cable, the port or hub, the drive "
+            "being unplugged or losing power while in use, or the drive itself - much less "
+            "serious for the PC than an internal drive, though anything on that drive is "
+            "still at risk."
+        )
+        checks = list(_USB_DISK_CHECKS)
+    else:
+        usb_note = ""
+        checks = [
+            "Back up anything important before testing further.",
+            "Check the drive's health and reliability counters (see the disk findings).",
+            "Replace the SATA cable or move the drive to another port or M.2 slot.",
+            "Update the SSD firmware and the storage controller driver.",
+            "Run 'chkdsk /scan' on the affected volume.",
+        ]
+        if any(n in removable for n in numbers):
+            checks[1:1] = _USB_DISK_CHECKS[1:]
     return [
         Finding(
             code="storage.io_errors",
             category="storage",
-            severity=Severity.CRITICAL if serious else Severity.WARNING,
+            severity=Severity.CRITICAL if serious and not removable_only else Severity.WARNING,
             title=f"{len(matched)} disk error event(s) in the event log",
             summary=(
                 f"Windows logged storage errors in {_window(run)}: {detail}. "
@@ -651,15 +729,10 @@ def storage_io_errors(run: RunData, t: Thresholds) -> list[Finding] | None:
                     "long freezes in games."
                 )
                 + which
+                + usb_note
                 + incident
             ),
-            next_checks=[
-                "Back up anything important before testing further.",
-                "Check the drive's health and reliability counters (see the disk findings).",
-                "Replace the SATA cable or move the drive to another port or M.2 slot.",
-                "Update the SSD firmware and the storage controller driver.",
-                "Run 'chkdsk /scan' on the affected volume.",
-            ],
+            next_checks=checks,
             evidence={
                 "count": len(matched),
                 "by_kind": dict(counts),

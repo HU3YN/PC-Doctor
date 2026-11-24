@@ -29,6 +29,147 @@ Describe 'Protect-PCDoctorText' {
     }
 }
 
+Describe 'Test-PCDoctorUnderLoad' {
+    It 'calls a desktop with nothing running idle' {
+        $verdict = Test-PCDoctorUnderLoad -Samples @(@{ gpu_load_pct = 3; cpu_load_pct = 6 }, @{ gpu_load_pct = 2; cpu_load_pct = 9 }, @{ gpu_load_pct = 4; cpu_load_pct = 5 })
+        $verdict.busy | Should -BeFalse
+        $verdict.gpu_load_pct | Should -Be 3
+        $verdict.cpu_load_pct | Should -Be 6
+        Format-PCDoctorLoad $verdict | Should -Be 'GPU 3%, CPU 6%'
+    }
+    It 'counts a game (GPU) and a CPU stress test (CPU only) as load' {
+        (Test-PCDoctorUnderLoad -Samples @(@{ gpu_load_pct = 97; cpu_load_pct = 20 })).busy | Should -BeTrue
+        (Test-PCDoctorUnderLoad -Samples @(@{ gpu_load_pct = 1; cpu_load_pct = 100 })).busy | Should -BeTrue
+    }
+    It 'is not started by one busy second' {
+        (Test-PCDoctorUnderLoad -Samples @(@{ gpu_load_pct = 2 }, @{ gpu_load_pct = 90 }, @{ gpu_load_pct = 3 })).busy | Should -BeFalse
+    }
+    It 'takes the middle of an even number of readings' {
+        (Test-PCDoctorUnderLoad -Samples @(@{ gpu_load_pct = 20 }, @{ gpu_load_pct = 50 })).gpu_load_pct | Should -Be 35
+    }
+    It 'says nothing when the PC gave no load reading' {
+        $verdict = Test-PCDoctorUnderLoad -Samples @(@{ gpu_load_pct = $null; cpu_load_pct = $null }, $null)
+        $verdict.busy | Should -BeNullOrEmpty
+        $verdict.busy -eq $false | Should -BeFalse
+        Format-PCDoctorLoad $verdict | Should -Be ''
+        (Test-PCDoctorUnderLoad -Samples @()).busy | Should -BeNullOrEmpty
+    }
+    It 'judges on the reading it has when the other is missing' {
+        (Test-PCDoctorUnderLoad -Samples @(@{ gpu_load_pct = $null; cpu_load_pct = 8 })).busy | Should -BeFalse
+    }
+}
+
+Describe 'Displays and monitors' {
+    It 'matches a monitor interface name to its WMI instance' {
+        $interface = '\\?\DISPLAY#GSM5B7F#5&2b8f1c7&0&UID4352#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}'
+        ConvertTo-PCDoctorMonitorKey $interface | Should -Be 'DISPLAY\GSM5B7F\5&2B8F1C7&0&UID4352'
+        ConvertTo-PCDoctorMonitorKey 'DISPLAY\GSM5B7F\5&2b8f1c7&0&UID4352_0' | Should -Be 'DISPLAY\GSM5B7F\5&2B8F1C7&0&UID4352'
+        ConvertTo-PCDoctorMonitorKey '' | Should -BeNullOrEmpty
+    }
+    It 'reads an EDID string from WMI character codes' {
+        ConvertFrom-PCDoctorWmiString @(69, 120, 97, 109, 112, 108, 101, 0, 0) | Should -Be 'Example'
+        ConvertFrom-PCDoctorWmiString $null | Should -BeNullOrEmpty
+    }
+    It 'reports a 360 Hz monitor left at 59 Hz, with its model name' {
+        $screen = [pscustomobject]@{ Adapter = 'NVIDIA GeForce RTX 5080'; Width = 2560; Height = 1440; Refresh = 59; MaxAtResolution = 360; Max = 360
+            MonitorInterface = '\\?\DISPLAY#ABC1234#5&1&0&UID1#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}' }
+        $monitors = @{ 'DISPLAY\ABC1234\5&1&0&UID1' = [ordered]@{ name = 'Example 27Q'; max_refresh_hz = 360 } }
+        $display = @(ConvertTo-PCDoctorDisplays -Screens @($screen) -Monitors $monitors)[0]
+        $display.resolution | Should -Be '2560x1440'
+        $display.refresh_hz | Should -Be 59
+        $display.max_refresh_hz_at_resolution | Should -Be 360
+        $display.monitor | Should -Be 'Example 27Q'
+        $display.monitor_max_refresh_hz | Should -Be 360
+    }
+    It 'pairs one screen with one monitor even when the names do not match' {
+        $screen = [pscustomobject]@{ Adapter = 'GPU'; Width = 1920; Height = 1080; Refresh = 60; MaxAtResolution = 60; Max = 60; MonitorInterface = $null }
+        $display = @(ConvertTo-PCDoctorDisplays -Screens @($screen) -Monitors @{ 'X' = [ordered]@{ name = 'Only one'; max_refresh_hz = 144 } })[0]
+        $display.monitor | Should -Be 'Only one'
+    }
+    It 'leaves the monitor out when two screens cannot be told apart, and turns 0 and 1 Hz into no reading' {
+        $screens = @(
+            [pscustomobject]@{ Adapter = 'GPU'; Width = 1920; Height = 1080; Refresh = 1; MaxAtResolution = 0; Max = 0; MonitorInterface = $null },
+            [pscustomobject]@{ Adapter = 'GPU'; Width = 1920; Height = 1080; Refresh = 60; MaxAtResolution = 60; Max = 60; MonitorInterface = $null })
+        $monitors = @{ 'A' = [ordered]@{ name = 'A'; max_refresh_hz = 60 }; 'B' = [ordered]@{ name = 'B'; max_refresh_hz = 60 } }
+        $displays = @(ConvertTo-PCDoctorDisplays -Screens $screens -Monitors $monitors)
+        $displays.Count | Should -Be 2
+        $displays[0].monitor | Should -BeNullOrEmpty
+        $displays[0].refresh_hz | Should -BeNullOrEmpty
+        $displays[0].max_refresh_hz | Should -BeNullOrEmpty
+    }
+    It 'gives an empty list, not an error, when Windows answers nothing' {
+        @(ConvertTo-PCDoctorDisplays -Screens @() -Monitors @{}).Count | Should -Be 0
+    }
+}
+
+Describe 'Temperature driver files' {
+    BeforeAll {
+        function New-ToolsFolder([string]$InstallerText = 'installer', [string]$DllText = 'dll') {
+            $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('pcd-tt-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+            New-Item -ItemType Directory -Path (Join-Path $dir 'tools/lhm') -Force | Out-Null
+            $installer = Join-Path $dir 'tools/PawnIO_setup.exe'
+            [System.IO.File]::WriteAllText($installer, 'installer')
+            $dll = Join-Path $dir 'tools/lhm/LibreHardwareMonitorLib.dll'
+            [System.IO.File]::WriteAllText($dll, 'dll')
+            $pins = [ordered]@{
+                pawnio    = [ordered]@{ version = '2.2.0.0'; file = 'PawnIO_setup.exe'; sha256 = (Get-FileHash $installer).Hash; signer = 'namazso' }
+                libraries = @([ordered]@{ id = 'librehardwaremonitorlib'; dll = 'runtimes/win-x64/lib/net472/LibreHardwareMonitorLib.dll'; dll_sha256 = (Get-FileHash $dll).Hash })
+            }
+            [System.IO.File]::WriteAllText((Join-Path $dir 'temperature-tools.json'), ($pins | ConvertTo-Json -Depth 4))
+            # The pins are of the real bytes; now make the files what the test wants.
+            if ($InstallerText -ne 'installer') { [System.IO.File]::WriteAllText($installer, $InstallerText) }
+            if ($DllText -ne 'dll') { [System.IO.File]::WriteAllText($dll, $DllText) }
+            return $dir
+        }
+    }
+    It 'uses the pinned files when every hash and the signature check out' {
+        $dir = New-ToolsFolder
+        $tools = Get-PCDoctorTemperatureTools -CollectorDir $dir -IsTrusted { param($file, $publisher) $file -and $publisher -eq 'namazso' }
+        $tools.Installer | Should -BeLike '*PawnIO_setup.exe'
+        $tools.LibraryDir | Should -BeLike '*lhm'
+        $tools.Version | Should -Be '2.2.0.0'
+        $tools.Problem | Should -BeNullOrEmpty
+    }
+    It 'uses none of them when the installer or one library is not the pinned file' {
+        Get-PCDoctorTemperatureTools -CollectorDir (New-ToolsFolder -InstallerText 'swapped') -IsTrusted { $true } | Should -BeNullOrEmpty
+        Get-PCDoctorTemperatureTools -CollectorDir (New-ToolsFolder -DllText 'swapped') -IsTrusted { $true } | Should -BeNullOrEmpty
+    }
+    It 'refuses a pinned installer whose signature is wrong, and says why' {
+        $tools = Get-PCDoctorTemperatureTools -CollectorDir (New-ToolsFolder) -IsTrusted { $false }
+        $tools.Problem | Should -Match 'valid signature from namazso'
+    }
+    It 'finds nothing in a folder without the files' {
+        $empty = Join-Path ([System.IO.Path]::GetTempPath()) ('pcd-tt-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Path $empty | Out-Null
+        Get-PCDoctorTemperatureTools -CollectorDir $empty | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Temperature reader output' {
+    It 'reads the sensors the reader wrote, in the web server shape the sample mapping takes' {
+        $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('pcd-rd-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        $reader = @{ OutFile = (Join-Path $dir 'sensors.json'); StopFile = (Join-Path $dir 'stop'); Dir = $dir; Process = $null }
+        Get-PCDoctorLhmReaderSensors -Reader $reader | Should -BeNullOrEmpty
+        $json = '[{"SensorId":"/amdcpu/0/temperature/2","Type":"Temperature","Text":"Core (Tctl/Tdie)","Value":71.5},' +
+            '{"SensorId":"/amdcpu/0/load/0","Type":"Load","Text":"CPU Total","Value":42}]'
+        [System.IO.File]::WriteAllText($reader.OutFile, $json)
+        $sensors = Get-PCDoctorLhmReaderSensors -Reader $reader
+        @($sensors).Count | Should -Be 2
+        $sample = ConvertTo-PCDoctorSample -Sensors $sensors
+        $sample['cpu_temp_c'] | Should -Be 71.5
+        $sample['cpu_load_pct'] | Should -Be 42
+        (Get-Item $reader.OutFile).LastWriteTime = (Get-Date).AddMinutes(-1)
+        Get-PCDoctorLhmReaderSensors -Reader $reader | Should -BeNullOrEmpty
+        [System.IO.File]::WriteAllText($reader.OutFile + '.error', 'System.IO.FileNotFoundException: Could not load file or assembly HidSharp')
+        Get-PCDoctorLhmReaderProblem -Reader $reader | Should -Match 'FileNotFoundException'
+        Get-PCDoctorLhmReaderProblem -Reader $null | Should -Be 'it could not be started'
+        Stop-PCDoctorLhmReader -Reader $reader
+        Test-Path $dir | Should -BeFalse
+        { Stop-PCDoctorLhmReader -Reader $null } | Should -Not -Throw
+    }
+}
+
 Describe 'ConvertTo-PCDoctorNumber' {
     It 'reads numbers, formatted values and decimal commas' {
         ConvertTo-PCDoctorNumber 45.5 | Should -Be 45.5

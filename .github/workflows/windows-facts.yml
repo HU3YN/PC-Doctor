@@ -129,3 +129,24 @@ jobs:
           Invoke-PM @('--output_file', "`"$csv2`"", '--timed', '5', '--terminate_after_timed', '--no_console_stats', '--stop_existing_session', '--session_name', 'PCDoctorProbe', '--v2_metrics') 'v2_metrics'
           if (Test-Path $csv2) { Get-Content $csv2 -TotalCount 3 } else { Write-Output 'no CSV written' }
           Stop-Process -Id $form.Id -Force -ErrorAction SilentlyContinue
+
+  # The CPU temperature plan (docs/plan.md, Step 1) installs the PawnIO driver
+  # for a capture and removes it after. Before that is built: does a real
+  # Windows accept PawnIO's driver, does the uninstall leave nothing, does
+  # Defender react, and does LibreHardwareMonitorLib load in Windows
+  # PowerShell 5.1? A cloud VM's CPU may report no temperature; that part
+  # still needs the owner's PC.
+  pawnio-probe:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Install PawnIO, read the CPU, uninstall (Probe-CpuTemperature.ps1)
+        shell: powershell
+        run: |
+          & collector/tests/Probe-CpuTemperature.ps1 -Yes
+          Write-Output "probe exit code: $LASTEXITCODE"
+          $result = 'collector/runs/cpu-temperature-probe.json'
+          if (Test-Path $result) { Get-Content $result -Raw } else { Write-Output 'no result file' }
+          # Not a pass/fail check: the facts above are the point.
+          exit 0

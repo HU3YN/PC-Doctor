@@ -422,6 +422,120 @@ def power_saver_plan(run: RunData, t: Thresholds) -> list[Finding] | None:
     ]
 
 
+def _hz_text(value: float) -> str:
+    """Windows' name for a refresh rate, as people say it: 59 -> "60 Hz".
+
+    Windows reports a 60 / 120 / 240 Hz mode as 59 / 119 / 239 (the real rate
+    is 59.94 and so on), and a 144 Hz mode as 143.
+    """
+    hz = int(round(value))
+    if hz % 10 == 9 or hz in (143, 164):
+        hz += 1
+    return f"{hz} Hz"
+
+
+def _gap_is_large(current: float, higher: float, t: Thresholds) -> bool:
+    return higher >= current * t.refresh_gap_ratio and higher - current >= t.refresh_gap_min_hz
+
+
+@rule(
+    "display.refresh_below_max",
+    "peripheral",
+    "Screen refresh rate",
+    "A screen runs at a much lower refresh rate than it can do.",
+    "the screens and their refresh rates from the collector",
+)
+def refresh_below_max(run: RunData, t: Thresholds) -> list[Finding] | None:
+    if is_virtual_machine(run):
+        return None
+    displays = run.specs.get("displays") if run.specs else None
+    if not isinstance(displays, list):
+        return None
+    judged = 0
+    findings: list[Finding] = []
+    for index, display in enumerate(displays, start=1):
+        if not isinstance(display, dict):
+            continue
+        current = _number(display.get("refresh_hz"))
+        offered = _number(display.get("max_refresh_hz_at_resolution"))
+        monitor_max = _number(display.get("monitor_max_refresh_hz"))
+        if not current or current <= 0 or not offered or offered <= 0:
+            continue
+        judged += 1
+        monitor = str(display.get("monitor") or "").strip()
+        adapter = str(display.get("adapter") or "").strip()
+        resolution = str(display.get("resolution") or "").strip()
+        name = monitor or (f"the screen on {adapter}" if adapter else f"screen {index}")
+        at_res = f" at {resolution}" if resolution else ""
+        evidence = {
+            "monitor": monitor or None,
+            "adapter": adapter or None,
+            "resolution": resolution or None,
+            "refresh_hz": int(current),
+            "max_refresh_hz_at_resolution": int(offered),
+            "monitor_max_refresh_hz": int(monitor_max) if monitor_max else None,
+        }
+        if _gap_is_large(current, offered, t):
+            findings.append(
+                Finding(
+                    code="display.refresh_below_max",
+                    category="peripheral",
+                    severity=Severity.WARNING,
+                    title=f"{name} runs at {_hz_text(current)}, but can do {_hz_text(offered)}",
+                    summary=(
+                        f"{name} is running at {_hz_text(current)}, but Windows offers up to "
+                        f"{_hz_text(offered)}{at_res}. Motion looks less smooth than it could, "
+                        "and games cannot go above the refresh rate. This is usually just a "
+                        "setting: Windows picks about 60 Hz at first and does not raise it by "
+                        "itself."
+                    ),
+                    next_checks=[
+                        "Settings > System > Display > Advanced display > Choose a refresh "
+                        f"rate, and pick {_hz_text(offered)}.",
+                        "Also check the graphics card's control panel (NVIDIA Control Panel or "
+                        "AMD Software) and set the refresh rate there.",
+                        "If the higher rates are missing from the list, see the cable and "
+                        "port checks: use DisplayPort and plug into the graphics card.",
+                    ],
+                    evidence=evidence,
+                )
+            )
+        elif monitor_max and _gap_is_large(current, monitor_max, t):
+            findings.append(
+                Finding(
+                    code="display.refresh_below_max",
+                    category="peripheral",
+                    severity=Severity.WARNING,
+                    title=(
+                        f"{name} can do {_hz_text(monitor_max)}, but Windows only offers "
+                        f"{_hz_text(offered)}"
+                    ),
+                    summary=(
+                        f"{name} says it supports up to {_hz_text(monitor_max)}, but Windows "
+                        f"only offers {_hz_text(offered)}{at_res}. The connection is likely the "
+                        "limit - an HDMI cable or port that is too old or too slow, a worn "
+                        "cable, or a cable plugged into the motherboard instead of the "
+                        "graphics card."
+                    ),
+                    next_checks=[
+                        "Check that the screen is plugged into the graphics card, not the "
+                        "motherboard's video port.",
+                        "Use a DisplayPort cable, or a certified HDMI 2.1 cable if it has to "
+                        "be HDMI, and try another port on the card.",
+                        "Check the screen's own menu: some screens have a setting that must be "
+                        "switched on for high refresh rates (often called overdrive, high "
+                        "refresh or DisplayPort 1.4).",
+                        "Then look at Settings > System > Display > Advanced display > Choose "
+                        "a refresh rate again.",
+                    ],
+                    evidence=evidence,
+                )
+            )
+    if not judged:
+        return None
+    return findings
+
+
 @rule(
     "power.battery_worn",
     "power",

@@ -1,0 +1,103 @@
+Libraries in tools/lhm/
+=======================
+
+The collector reads CPU temperature with LibreHardwareMonitorLib on
+.NET Framework 4.7.2. These are the DLLs it needs, each taken unmodified from
+the official NuGet package named below (https://www.nuget.org/packages/<id>/<version>).
+The SHA-256 of every package and of every DLL is pinned in
+temperature-tools.json and checked when the zip is built.
+
+Licence texts, in this folder:
+  MPL-2.0              MPL-2.0.txt (Mozilla Public License 2.0)
+  Apache-2.0           HidSharp-LICENSE.txt (verbatim from the HidSharp package)
+  MIT                  dotnet-MIT-LICENSE.txt (verbatim from the System.* packages:
+                       Copyright (c) .NET Foundation and Contributors)
+                       dotnet-THIRD-PARTY-NOTICES.txt (verbatim from System.Management
+                       10.0.2: the notices for code the .NET libraries include)
+
+The MPL-2.0 libraries are distributed in executable form only; their source
+code is available at the addresses below (the commit is the one each package
+names in its nuspec).
+
+LibreHardwareMonitorLib.dll
+  Package: LibreHardwareMonitorLib 0.9.6
+  Licence: MPL-2.0
+  Source:  https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
+           (commit 3d331e3370efb858411f19511373eff65a218701)
+
+DiskInfoToolkit.dll
+  Package: DiskInfoToolkit 1.1.2
+  Licence: MPL-2.0
+  Source:  https://github.com/Blacktempel/DiskInfoToolkit
+           (commit 25319eae5781e75bcf141e844ceab2afe94d40ea)
+
+RAMSPDToolkit-NDD.dll
+  Package: RAMSPDToolkit-NDD 1.4.2
+  Licence: MPL-2.0
+  Source:  https://github.com/Blacktempel/RAMSPDToolkit
+           (commit 3b47b960e0830fef344624ad5e389675d5f0a1ce)
+
+BlackSharp.Core.dll
+  Package: BlackSharp.Core 1.0.7
+  Licence: MPL-2.0
+  Source:  https://github.com/Blacktempel/BlackSharp
+           (commit c70b735c6cec123ee8a046ac4a0bc6c606f52cf0)
+
+HidSharp.dll
+  Package: HidSharp 2.6.4
+  Licence: Apache-2.0 (HidSharp-LICENSE.txt)
+  Source:  https://software.seekye.com/hidsharp
+
+System.Management.dll
+  Package: System.Management 10.0.2
+  Licence: MIT (dotnet-MIT-LICENSE.txt)
+  Source:  https://github.com/dotnet/dotnet
+           (commit 44525024595742ebe09023abe709df51de65009b)
+
+System.CodeDom.dll
+  Package: System.CodeDom 10.0.2
+  Licence: MIT (dotnet-MIT-LICENSE.txt)
+  Source:  https://github.com/dotnet/dotnet
+           (commit 44525024595742ebe09023abe709df51de65009b)
+
+System.Threading.AccessControl.dll
+  Package: System.Threading.AccessControl 10.0.3
+  Licence: MIT (dotnet-MIT-LICENSE.txt)
+  Source:  https://github.com/dotnet/dotnet
+           (commit c2435c3e0f46de784341ac3ed62863ce77e117b4)
+
+System.Memory.dll
+  Package: System.Memory 4.6.3
+  Licence: MIT (dotnet-MIT-LICENSE.txt)
+  Source:  https://github.com/dotnet/maintenance-packages
+           (commit f62ca0009b038cab4725a720f386623a969d73ad)
+
+System.Buffers.dll
+  Package: System.Buffers 4.6.1
+  Licence: MIT (dotnet-MIT-LICENSE.txt)
+  Source:  https://github.com/dotnet/maintenance-packages
+           (commit 6b84308c9ad012f53240d72c1d716d7e42546483)
+
+System.Numerics.Vectors.dll
+  Package: System.Numerics.Vectors 4.6.1
+  Licence: MIT (dotnet-MIT-LICENSE.txt)
+  Source:  https://github.com/dotnet/maintenance-packages
+           (commit 6b84308c9ad012f53240d72c1d716d7e42546483)
+
+System.Runtime.CompilerServices.Unsafe.dll
+  Package: System.Runtime.CompilerServices.Unsafe 6.1.2
+  Licence: MIT (dotnet-MIT-LICENSE.txt)
+  Source:  https://github.com/dotnet/maintenance-packages
+           (commit f62ca0009b038cab4725a720f386623a969d73ad)
+
+System.Security.AccessControl.dll
+  Package: System.Security.AccessControl 6.0.0
+  Licence: MIT (dotnet-MIT-LICENSE.txt)
+  Source:  https://github.com/dotnet/runtime
+           (commit 4822e3c3aa77eb82b2fb33c9321f923cf11ddde6)
+
+System.Security.Principal.Windows.dll
+  Package: System.Security.Principal.Windows 5.0.0
+  Licence: MIT (dotnet-MIT-LICENSE.txt)
+  Source:  https://github.com/dotnet/runtime
+           (commit cf258a14b70ad9069470a108f13765e0e5988f51)
