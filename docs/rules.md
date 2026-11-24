@@ -17,9 +17,9 @@ A rule answers one of three ways, and the dashboard shows which:
 | `hardware.whea_fatal` | Processor | The hardware reported an error it could not recover from. | the Windows event log |
 | `hardware.whea_corrected` | Processor | The hardware keeps making errors that it manages to correct - an early warning. | the Windows event log |
 | `power.unexpected_shutdown` | Power / PSU | The PC lost power or froze and was forced off, without a blue screen. | the Windows event log |
-| `stability.bluescreen` | Windows / software | Windows crashed with a stop code (blue screen). | the Windows event log |
+| `stability.bluescreen` | Windows / software | Windows crashed with a stop code (blue screen); links a disk error just before it, and for 0x9F on a USB drive hints at the drive failing to power down. | the Windows event log |
 | `gpu.driver_timeout` | Graphics card | The graphics driver stopped responding and Windows restarted it. | the Windows event log |
-| `storage.io_errors` | Storage (SSD / HDD) | Windows logged bad blocks, drive resets, I/O retries or file-system corruption. | the Windows event log |
+| `storage.io_errors` | Storage (SSD / HDD) | Windows logged bad blocks, drive resets, I/O retries or file-system corruption; names the drive, and for a USB drive or card says so and softens the advice. | the Windows event log |
 | `memory.diagnostic_failed` | Memory (RAM) | Windows Memory Diagnostic found bad memory. | a Windows Memory Diagnostic result in the event log |
 | `cpu.firmware_speed_limit` | Processor | The firmware is holding the processor below full speed. | the Windows event log |
 | `performance.stutter` | Performance | Uneven frame times: spikes, hitches, or 1% lows far below the average. | a PresentMon capture |
