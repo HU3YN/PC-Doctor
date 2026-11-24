@@ -143,6 +143,39 @@ Every image bump keeps its digest pin and the action SHAs match their tags.
 | Docs | collector README, README, privacy (the one github.com download), testing, roadmap, SECURITY; threat-model tables now agree with the fixed items (item #14 corrected: `POSTGRES_PASSWORD` still defaults to `pcdoctor`) |
 | Dependabot | #13 was replaced by #17 (dev-tools, 7 updates), which fails: TypeScript 7 vs typescript-eslint 8 (`npm ci` ERESOLVE). Major TypeScript updates are now ignored; Dependabot should regroup #17 without it once this branch is on the default branch. New: #14-#16 (patch/minor web libraries) |
 
+#### The PawnIO probe on GitHub's Windows runner (2026-11-24)
+
+`windows-facts` job `pawnio-probe`, Windows Server 2025 (build 26100), AMD
+EPYC VM, Secure Boot off, vulnerable-driver blocklist on:
+- PawnIO 2.2.0.0 installed silently in about 1 s (exit code 0). Its driver
+  `PawnIO.sys` (driver store `pawnio.inf`, published as `oemNN.inf`) is signed
+  by **Microsoft Windows Hardware Compatibility Publisher**; the installer,
+  `PawnIOLib.dll`, `PawnIOUtil.exe` and `uninstall.exe` by namazso.eu
+  (GLOBALTRUST). The service ran. Defender: no detection.
+- LibreHardwareMonitorLib 0.9.6 loaded in Windows PowerShell 5.1 and opened
+  the CPU: sensor "Core (Tctl/Tdie)" read 0 C (a VM; a real Ryzen should give
+  a value - only the owner's PC can show it).
+- `uninstall -silent` (exit 0) removed the registration and the Program
+  Files folder but **left the driver package and a stopped `PawnIO`
+  service**. The probe (version 2) now removes those with pnputil and sc;
+  its second run shows whether that leaves the PC clean.
+- Not known: Memory Integrity (HVCI) on (the runner reported no value), a
+  real CPU's temperature, anti-cheat games.
+
+#### GPU temperature on AMD and Intel without a driver (research, 2026-11-24)
+
+Not built. Best route found: `D3DKMTQueryAdapterInfo` with
+`KMTQAITYPE_ADAPTERPERFDATA` (62) from gdi32.dll - Windows' own, WDDM 2.4+,
+the same source windows_exporter says Task Manager uses. 64-byte
+`D3DKMT_ADAPTER_PERFDATA`, `Temperature` (deci-Celsius) at offset 56 on x64
+(from the Windows SDK 10.0.22621 `d3dkmthk.h`); adapter LUIDs from
+`HKLM\SOFTWARE\Microsoft\DirectX\*`. Drivers that do not fill it give 0
+(treat 0 or over 150 C as no reading). One third-party report of it working
+on an RX 7900 XTX; nothing found for Intel. Fallbacks if it gives 0 on real
+cards: AMD ADL (`atiadlxx.dll`, `ADL2_OverdriveN_Temperature_Get`), Intel
+IGCL (`ControlLib.dll`, `ctlPowerTelemetryGet`) - both driver-installed,
+both heavier. Needs a real AMD or Intel GPU to test; the owner's is NVIDIA.
+
 ### Known gaps
 - The working branch is not merged, so Dependabot still reads the old
   `dependabot.yml` (no actions group, TypeScript 7 not ignored).
@@ -194,7 +227,9 @@ Frames are done (2026-11-17): PresentMon is in the zip, the game is picked
 after the capture (the busiest presenting program), and the capture waits
 for load at the start. Left:
 
-1. **The probe, on the owner's PC.** The owner runs
+1. **The probe, on the owner's PC** (signing, blocklist, Defender and the
+   library already checked on GitHub's runner - see above; what is left: a
+   real CPU temperature, Memory Integrity, a clean uninstall). The owner runs
    `collector\tests\Probe-CpuTemperature.ps1` in an administrator PowerShell
    and attaches `collector\runs\cpu-temperature-probe.json`. Read in it:
    the installed driver's signer and status, `protections`, `reading.error`
@@ -223,8 +258,9 @@ for load at the start. Left:
    Defender detection, leftovers, libraries do not load): stop and take the
    finding to the owner; the fallback they did not choose is "use PawnIO
    only if it is already installed".
-4. AMD and Intel GPUs: check what Windows or the vendor driver exposes
-   without a kernel driver (NVIDIA works through signed nvidia-smi).
+4. AMD and Intel GPUs: researched (see "GPU temperature on AMD and Intel
+   without a driver"); build the D3DKMT reader as a Windows-sample fallback
+   when an AMD or Intel GPU is available to test on.
 5. When it is built, update together: README, collector/README.md,
    docs/privacy.md, docs/rules.md and the rule at the bottom of this file,
    threat-model items #1 and #2, docs/testing.md, the Get page text, the

@@ -68,7 +68,7 @@ $Packages = @(
 
 $result = [ordered]@{
     probe          = 'cpu-temperature'
-    probe_version  = 2
+    probe_version  = 3
     ran_at         = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     windows        = $null
     protections    = $null
@@ -126,8 +126,21 @@ function Get-PawnIOLeftovers {
         driver_packages = @(Get-PawnIODriverPackages)
         sys_in_drivers  = @(Get-ChildItem -LiteralPath (Join-Path $env:SystemRoot 'System32\drivers') -Filter '*PawnIO*' -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
     }
+    # Win32_PnPSignedDriver can go on listing a device that was just removed,
+    # so ask pnputil and look in the driver store as well.
+    $published = @()
+    $current = $null
+    foreach ($line in @(& pnputil.exe /enum-drivers 2>$null)) {
+        if ($line -match '^\s*Published Name\s*:\s*(\S+)') { $current = $Matches[1] }
+        elseif ($line -match '^\s*Original Name\s*:\s*pawnio\.inf\s*$' -and $current) { $published += $current }
+    }
+    $left.store_packages = @($published)
+    $left.store_folders = @(Get-ChildItem -LiteralPath (Join-Path $env:SystemRoot 'System32\DriverStore\FileRepository') -Directory -Filter 'pawnio.inf_*' -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+    $device = @(& pnputil.exe /enum-devices /instanceid 'ROOT\PAWNIO\0000' 2>$null) -join "`n"
+    $left.device_present = ($device -match '(?i)ROOT\\PAWNIO\\0000')
     $left.clean = (-not $left.registered) -and (-not $left.folder_exists) -and ($left.services.Count -eq 0) -and
-        ($left.driver_packages.Count -eq 0) -and ($left.sys_in_drivers.Count -eq 0)
+        ($left.store_packages.Count -eq 0) -and ($left.store_folders.Count -eq 0) -and (-not $left.device_present) -and
+        ($left.sys_in_drivers.Count -eq 0)
     return $left
 }
 function Get-SignatureInfo([string]$Path) {
